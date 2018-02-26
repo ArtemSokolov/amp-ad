@@ -73,7 +73,7 @@ cat( "Matching against clinical covariates...\n" )
 fnY <- synGet( "syn3191087", downloadLocation = local.dir )@filePath
 Y <- suppressWarnings( suppressMessages( read_csv(fnY) ) ) %>%
     select( projid, PMI = pmi, AOD = age_death, CDR = cogdx, Braak = braaksc ) %>%
-    mutate( BrodmannArea = "BM9/BM46" )
+    mutate( BrodmannArea = "BM9,BM46" )
 
 ## Combining everything into a common data frame
 cat( "Finalizing...\n" )

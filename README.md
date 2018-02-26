@@ -36,11 +36,12 @@ Clone and install the btr package
 
 
 ## Wrangle data
-The datasets used by the analyses in this repository can be easily downloaded using command-line scripts. To download Mount Sinai Brain Bank (MSBB) dataset, run the following on the command line:
+The datasets used by the analyses in this repository can be easily downloaded using command-line scripts. To download and wrangle Mount Sinai Brain Bank (MSBB) and ROSMAP datasets, run the following on the command line:
 
-    Rscript msbb.R <path to data>
+    Rscript wrangle/msbb.R <path to output directory>
+    Rscript wrangle/rosmap.R <path to output directory>
 
-If `<path to data>` is left blank, then `/data/AMP-AD/MSBB` will be used by default.
+If `<path to output directory>` is left blank, then the default values of `/data/AMP-AD/MSBB` and `/data/AMP-AD/ROSMAP` will be used for MSBB and ROSMAP, respectively.
 
 ## Obtain background predictions
 We will use a random forest regression to predict the Braak score of of samples
