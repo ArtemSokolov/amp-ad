@@ -1,0 +1,151 @@
+---
+title: "Mining Synapse results files"
+author: Artem Sokolov
+output: html_document
+---
+
+## Introduction
+
+The [BTR](https://github.com/pvtodorov/btr) package provides a convenient way to profile a large number of gene sets against the AMP-AD datasets. It automatically uploads all the results to [Synapse](https://www.synapse.org/#!Synapse:syn11615746/wiki/514728), and this vignette details how to pull down these results in a tidy format. We break the description up into two parts: the first part is focused on **"background"** results, where predictors were trained using randomly-selected sets of genes; the second part details how to retrieve results that are associated with a specific **"hypothesis"** gene set.
+
+All functionality described in this vignette is available directly through the R package. In the future, we aim to also provide command-line interfaces.
+```{r message=FALSE}
+## Source() a specific file for now
+## To be replaced by library(...) call when the package is finalized
+source( "resmine.R" )
+```
+
+## Background
+
+There are three functions that retrieve performance of predictors on background (i.e., randomly-selected) gene sets:
+
+1. `bkSummary()` returns a summary table of all background score files found in the Synapse project.
+2. `synBkAUC()` loads background results from a single `_auc.csv` file.
+3. `synBkAll()` is a wrapper for `synBkAUC()` that automatically identifies all (non-synthetic) background results files in the Synapse project, loads them one by one, and concatenates everything into a single data frame.
+
+Let's begin by querying for all available background files.
+```{r}
+bkSummary()
+```
+
+The resulting data frame contains a list of synapse IDs that refer to individual background files, as well as short identifiers of (a) the AMP-AD dataset / brain region profiled and (b) prediction task definition. We can load any one of these files by providing the synapse ID to `synBkAUC()`:
+
+```{r}
+X <- synBkAUC( "syn11959380" )  ## Store the result to a variable named X
+head(X)                         ## Look at the first few rows of X
+```
+
+The data frame shows performance (AUC) associated with individual randomly-selected gene sets of a particular size. Since the `BTR` pipeline profiles multiple background sets of the same size to collect variance measurements, there will be multiple entries for each value of `Size`. We can use the information encapsulated by the data frame to view how prediction performance changes with the size of a randomly-selected set:
+
+```{r message=FALSE, fig.width=5, fig.height=2, fig.align="center"}
+ggplot( X, aes(x=Size, y=AUC) ) + geom_smooth() + theme_bw()
+```
+
+The last function `synBkAll()` can be called without any arguments to automatically pull down all background results associated with non-synthetic data. Its output format is identical to that of `synBkAUC()` except that the `Dataset` and `Task` columns will now contain multiple values, allowing for a direct comparison of results across various datasets and tasks.
+
+```{r message=FALSE, fig.asp=0.3, fig.align="center"}
+## For the purposes of this vignette, we use the optional verbose argument to suppress all output
+XX <- synBkAll( verbose=FALSE )
+
+## Plot all results, showing how performance of background sets varies from
+##  dataset to dataset and from task to task
+ggplot( XX, aes(x=Size, y=AUC, color=Task) ) + theme_bw() +
+    geom_smooth() + facet_wrap( ~Dataset, nrow=1, scales="free" )
+```
+
+## Hypothesis
+
+Similar to the case with background sets, there are three function that allow for retrieval of hypothesis-related results:
+
+1. `statsSummary()` provides a summary table of all available `_stats.csv` files and their Synapse IDs.
+2. `synStats()` loads results from a single `_stats.csv` file, using its Synapse ID.
+3. `synStatsMany()` allows for downloading and concatenating of all `_stats.csv` files that are associated with a particular hypothesis / gene set.
+
+### Obtaining a summary
+
+The output of `statsSummary()` is very similar to that of `bkSummary()`.
+
+```{r}
+statsSummary()
+```
+
+The major difference is a new `Filename` column, which provides a connection to [the gene set](https://www.synapse.org/#!Synapse:syn11615747) that was profiled against AMP-AD data. This column can be used to drill down to the gene set of interest using the `filter` verb from [tidyverse](https://www.tidyverse.org/) (which is exactly what `synStatsMany()` does to identify which files to load). For example, let's identify the set of results files that capture performance of Metformin gene sets:
+
+```{r}
+statsSummary() %>% filter( grepl("Metformin", Filename) )
+```
+
+### Loading individual files
+
+We can load individual files using `synStats()`, as follows:
+
+```{r}
+synStats( "syn11969331" )
+```
+
+The resulting data frame shows how individual Metformin-related gene sets perform relative to background (for more information about these gene sets, please see the [original publication that defined them](http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004202)). This includes the size of a gene set, its raw AUC value, and the p-value derived from matching the gene set against background sets of similar size.
+
+The function `synStats()` also provides a way to map gene set names to another user-defined space. This may be useful for providing more meaningful names for each gene set. To take advantage of this feature, we need to define an indexable object that maps old names to new ones. This is easily accomplished using `setNames()` to generate a vector of new names, indexed by old names.
+```{r}
+oldNames <- c( "Metformin-upstream.txt", "Metformin-downstream.txt", "Metformin-SPNetwork.txt" )
+newNames <- c( "Mined", "Experimental", "Combined" )
+nameMap <- setNames( newNames, oldNames )
+nameMap		## Let's look at it
+```
+
+The mapping can now be passed directly to `synStats()` as the second argument:
+```{r}
+synStats( "syn11969331", nameMap )
+```
+
+**NOTE:** Nienke's gene sets are named using URLs to LINCS DB, which uniquely resolve to the correct compound associated with a given gene set. While the URLs assist with reproducibility, they are difficult to interpret directly. The R package provides a built-in mapping that can convert these URLs to drug names. The mapping is accessed via `LINCSmap()` function call. As with our example above, `LINCSmap()` returns an indexable vector that can be passed directly to `synStats()`:
+```{r}
+synStats( "syn11958434", LINCSmap() )
+```
+
+### Loading multiple files
+
+Lastly, we look at `synStatsMany()`, which allows for loading of multiple files based on partial matching of their filenames against a regular expression. For example, let's load all the ROSMAP results associated with `NMatch` gene sets (DGE-derived gene sets that are size-matched against Nienke's gene sets).
+```{r}
+## Although not used here, synStatsMany() can accept a name map as its second argument, akin to synStats()
+## verbose is an optional argument that we use here to suppress output
+R <- synStatsMany( "ROSMAP-NMatch", verbose=FALSE )
+head(R)		## Look at the first few rows of what we loaded
+```
+
+Notice that the output is almost identical to what we get with `synStats()`. The only difference is the additional `Filename` column. It can be used as a positive control to ensure that partial matching worked as intended.
+```{r}
+unique( R$Filename )
+```
+
+Here we purposefully loaded `NMatch` and `NMatch-Inh` gene sets. (The latter is the same thing as `NMatch` but composed of inhibited genes only.) However, if this was not intended, we would need to modify the query expression.
+
+Now that all the relevant information has been loaded, let's look at how `NMatch` and `NMatch-Inh` gene sets stack up against each other on the AC task.
+```{r fig.align="center"}
+## Select a relevant subset of results and reshape for comparison
+RR <- filter( R, Task == "AC" ) %>%             ## Reduce to the AC task
+    select( -Dataset, -Task, -pval) %>%         ## Deselect irrelevant variables
+    spread( Filename, AUC ) %>%                 ## Match up NMatch against NMatch-Inh
+    rename_at( 3, ~"Inhibitory only" ) %>%      ## Provide more reasonable column names
+    rename_at( 4, ~"All genes" )
+
+## Show a correlation plot
+ggplot( RR, aes( x=`All genes`, y=`Inhibitory only`, size=Size ) ) + 
+    geom_point( alpha=0.8, color="tomato" ) +
+    geom_abline( slope=1, lty="dashed" ) +
+    ggrepel::geom_text_repel( aes(label=Name), size=3 ) +
+    theme_bw() + theme( aspect.ratio=1 )
+```
+
+***
+
+<div style= "float:left; position:relative; top:-10px; margin:10px;">
+```{r, echo=FALSE, out.width = "50px"}
+knitr::include_graphics("./LSP_Horiz-Logo.jpg")
+```
+</div>
+
+This vignette is a part of the ["Analysis of AMP-AD datasets"](https://github.com/ArtemSokolov/amp-ad) GitHub repo.  
+**Authors**: Petar Todorov, Artem Sokolov  
+Laboratory of Systems Pharmacology  
+Havard Medical School
