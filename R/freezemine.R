@@ -1,4 +1,4 @@
-## Mining results files from Synapse
+## Legacy code for mining freeze v1.0 results files from Synapse
 ##
 ## by Artem Sokolov
 
