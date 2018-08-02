@@ -1,0 +1,36 @@
+---
+title: "The impact of #trees on performance of random forests"
+author: Artem Sokolov
+---
+
+```{r setup, echo=FALSE, message=FALSE}
+library( tidyverse )
+library( ggthemes )
+library( synapseClient )
+synapseLogin()
+source( "04-ntrees.R" )
+```
+
+Up until now, all random forest predictors we trained had only 10 trees. This resulted in a large number of ties, which resulted in many AUC estimates being 0.5. We believe that this artificially deflated the performance of our non-linear predictors and increased the number of trees to 100, allowing for a finer-grained probability prediction, which in turn leads to more frequest resolution of ties by the scoring script.
+
+This vignette focuses on distinguishing early (A) vs. late (C) stages of the disease in ROSMAP data. We compare the following three random forest formulations:
+
+* the 10-tree implementation used up to now,
+* a new implementation that increases the number of trees to 100,
+* and another implementation with 100 trees that also incorporates class imbalance as subsampling weights during tree construction.
+
+First thing to note is that the performance estimates for new implementations contained several NAs:
+```{r}
+getData() %>% filter( is.na(AUC) )
+getData() %>% filter( is.na(AUC) ) %>% .$Forest %>% unique
+```
+
+The number of NAs is minimal and we are still able to compare performance estimates across random set sizes for all three implementations.
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.width=7, fig.height=4}
+ggplot( getData(), aes( x = Size, y = AUC, color=Forest ) ) +
+    geom_smooth( se = FALSE ) + scale_color_few() +
+    bold_theme()
+```
+
+We observe that increasing the number of trees drastically boosts performance. The performance sees further small improvement, when class imbalance weights are incorporated during tree construction. However, even with these improvements, the performance still lags behind logistic regression (which is included as "Linear" on the plot for reference).
+

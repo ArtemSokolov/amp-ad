@@ -51,6 +51,19 @@ listSettings <- function( parentId = "syn12180241" )
     synq( c("id","name","settings_md5"), parentId = parentId, type = "settings" )
 }
 
+## A clean version of listSettings() that parses the file name into its
+##   Dataset, Strategy and Linearity components
+allSettings <- function()
+{
+    listSettings() %>% filter(grepl( "settings", name )) %>%
+        mutate( chunks = str_split(str_sub(name, 1, -6), "\\_") ) %>%
+        mutate( Dataset = map_chr(chunks, nth, 2),
+               Linearity = map_chr(chunks, nth, 4),
+               Strategy = map_chr(chunks, nth, 5),
+               Task = map_chr(chunks,6) ) %>%
+        select( -id, -name, -chunks )
+}
+
 ## Lists all files associated with a given settings md5 hash
 synBySettingsMd5 <- function( md5 )
 {
@@ -58,17 +71,3 @@ synBySettingsMd5 <- function( md5 )
         mutate( parentName = synName(parentId) )
 }
 
-## Identifies all stats files associated with a given strategy index,
-##  task (AB, BC, AC) and linear / nonlinear distinction
-listStats <- function( task, stratIndex = 3, lnl = "Linear" )
-{
-    ## The query should resolve to a unique entry
-    ## Retrieve the entry's md5 hash, then compose another query to retrieve
-    ##   all files associated with the hash
-    ## Finally, reduce the list of files just to those annotated as "stats"
-    s <- str_c( "strategy", stratIndex )
-    listSettings() %>% filter( grepl(s, name) ) %>%
-        filter( grepl(task, name) ) %>% filter( grepl(lnl, name) ) %>%
-        verify( nrow(.) == 1 ) %>% .$settings_md5 %>% synBySettingsMd5 %>%
-        filter( parentName == "stats" )
-}

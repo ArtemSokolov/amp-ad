@@ -1,0 +1,71 @@
+---
+title: "Reduction to the protein coding gene space and its effect of performance"
+author: Artem Sokolov
+---
+
+```{r setup, message=FALSE, echo=FALSE}
+library( tidyverse )
+library( plotly )
+library( synapseClient )
+synapseLogin()
+library( kableExtra )
+source( "03-protcoding.R" )
+```
+
+We measure the effect of reducing the gene space to protein coding regions on performance of Braak stage predictors. The vignette is focused on distinguishing early (A) vs. late (C) disease stage in ROSMAP dataset. We examine two strategies for selecting pairs of samples for cross-validation:
+
+1. `strategy1` - all possible pairs of one sample from A and another sample from C
+2. `strategy3` - each sample from A is paired with a single sample from C that has the closest value of `AOD` (age at time of death), and likewise for C. Ties are broken arbitrarily.
+
+## DISCLAIMER
+
+The comparisons outlined in this vignette are not 100% compatible. After observing the difference in performance on Nienke's gene sets, we tracked down the discrepancy to a slight variation in the input data. Turns out that the old runs on the original `ROSMAP` dataset excluded all samples that had `NA` values in any columns. Meanwhile, the latest iteration of the code is smarter about dropping samples that have `NA`s only in the relevant columns. (Note that all `NA`s were localized to the metadata / clinical columns only.) Consequently, `ROSMAPpc` preserved two additional samples that were not present in `ROSMAP`. This resulted in a different pairing of samples during leave-pair-out cross-validation. The difference in pairing is the dominant contributor to the downward trend seen in the plotly figure below. Setting aside this trend, we observed a strong correlation in performance between the two datasets.
+
+There was a minimal discrepancy in the number of genes that overlapped between Nienke's gene sets and the features present in `ROSMAP` datasets. This implies that nearly all of the drug-gene associations captured by these gene sets are in the protein coding space. To ensure fair comparison against randomly-selected sets, we will proceed with moving all of our analyses to the protein-coding gene space, even though we were unable to accurately measure the impact on performance due to the minor discrepancy with how `NA`s were handled.
+
+## Performance on background sets
+
+```{r echo=FALSE, message=FALSE, fig.align="center"}
+ggplot( loadBKAUCs(), aes( x = Size, y = AUC, color=Dataset ) ) +
+    geom_smooth( se = FALSE ) +
+    facet_grid( Linearity ~ Strategy, scales="free" ) +
+    scale_color_manual( values=c("tomato","steelblue") ) + bold_theme()
+```
+
+We begin by looking at performance of background gene sets. Plotted is average AUC, computed across 100 randomly-selected gene sets. `ROSMAP` denotes the dataset we have been using up to now, while `ROSMAPpc` reduces the space of genes to protein coding regions, using ftp://ftp.ensembl.org/pub/release-93/gtf/homo_sapiens/Homo_sapiens.GRCh38.93.gtf.gz as the reference. The x axis denotes the size of each radomly-selected gene set.
+
+We observe an increase in performance when the gene space is reduced. This is expected, since protein coding regions are more likely to be functionally relevant to disease mechanisms of action. This also implies that the performance bar against which drug-related gene sets are evaluated is now raised higher. Nevertheless, we believe this provides a fairer comparison because drug-gene associations are generally derived over the protein coding space.
+
+The trend is reversed for nonlinear predictors utilizing `strategy3` (AOD-minimizing pair selection). More analysis is needed to identify the exact reason.
+
+## Performance on Nienke's gene sets (strategy3 only)
+
+```{r echo=FALSE, message=FALSE}
+gg <- ggplot( loadScores(), aes(color=Linearity, label=Name, label2=Target) ) +
+    bold_theme() + scale_color_manual( values=c("tomato","steelblue") ) +
+    geom_point( aes(x=ROSMAP, y=ROSMAPpc) ) + theme( legend.title=element_blank() ) +
+    geom_abline( slope=1, color="gray", lwd=1.25, lty="dashed" )
+
+ggplotly( gg, tooltip=c("label","label2"), width=600 ) %>%
+    add_annotations( text="Linearity", xref="paper", yref="paper",
+                    font = list( size=20, face="bold" ),
+                    x=1.02, xanchor="left", y=0.8, yanchor="bottom",
+                    legendtitle=TRUE, showarrow=FALSE ) %>%
+    layout( legend=list(y=0.8, yanchor="top" ) ) %>%
+    htmltools::div( align="center" )
+```
+
+Next, we examine how performance is impacted when predictor is trained on gene sets that were composed from mining for drug-gene associations. The plot shows a direct comparison between the original `ROSMAP` dataset and its reduction to the protein-coding gene space. Overall, we observe a small, but consistent decrease in performance for the majority of the drugs. As with background sets, performance of random forests (`Nonlinear`) is much lower compared to logistic regression (`Linear`).
+
+We hypothesize that the drop in performance when ROSMAP is reduced to protein-coding region comes from a smaller number of genes that is now in common between the dataset and the *a priori* gene set composition.
+However, computing the overlap of individual drug-related gene sets against the gene space of each dataset revealed very minor discrepancies, suggesting that other factors are at play.
+
+```{r echo=FALSE}
+getSetSizes_cache() %>%
+    kable("html") %>%
+    kable_styling( bootstrap_options = "striped", full_width = FALSE ) %>%
+    column_spec( 1, width = "8em" ) %>%
+    column_spec( 2, width = "10em")
+```
+
+The table summarizes the discrepancies between `ROSMAP` and `ROSMAPpc`, which is limited to three gene names. Of these, `MAP3K20` gets filtered out of `ROSMAP` because it doesn't appear in the Ensembl -> HUGO mapping extracted from `EnsDb.Hsapiens.v86` BioConductor package.

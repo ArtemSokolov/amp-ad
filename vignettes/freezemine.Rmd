@@ -12,7 +12,7 @@ All functionality described in this vignette is available directly through the R
 ```{r message=FALSE}
 ## Source() a specific file for now
 ## To be replaced by library(...) call when the package is finalized
-source( "resmine.R" )
+source( "../R/freezemine.R" )
 ```
 
 ## Background

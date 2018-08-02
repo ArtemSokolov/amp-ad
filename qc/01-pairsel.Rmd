@@ -1,0 +1,114 @@
+---
+title: Evaluating the effect of pair selection schemes on performance
+author: Artem Sokolov
+---
+
+```{r setup, echo=FALSE, message=FALSE}
+library( tidyverse )
+library( synapseClient )
+synapseLogin()
+library( ggthemes )
+library( kableExtra )
+source( "01-pairsel.R" )
+```
+
+<style>
+table#idusage {float: right;}
+</style>
+
+We compare the following pair selection schemes:
+
+* `Current` - "Current" scheme that performs no minimization and simply composes a set of pairs, such that each sample is used in at least one pair.
+* `All-pairs` - all possible pairs where the samples have different class labels.
+* `AOD-all` - each pair is selected such that AOD distance between the two samples is minimized; in case of ties, all possible pairs are considered.
+* `AOD-one` - each pair is again selected such that AOD distance is minimized; however, in case of ties, a single pair is selected at random.
+* `ID-reuse` - pairs are selected such that the number of times each sample is reused is minimized. The scheme still ensures that each sample is represented at least once.
+
+All predictors are constructed on the ROSMAP dataset, comparing A against C and looking at class calls (rather than probabilities) during pair ranking.
+
+## Performance summary
+
+```{r echo=FALSE, message=FALSE, fig.align='center', fig.width=7, fig.height=3}
+## Load all the relevant AUC estimates
+AUC <- loadBKAUCs()
+
+## Make a summary plot
+ggplot( AUC, aes( x = Size, y = AUC, color = Estimate ) ) +
+    theme_bw() + geom_smooth( se = FALSE ) + bold_theme() +
+    scale_color_few()
+```
+
+We begin by looking at how the performance changes on background sets. The distinct loss of performance in `AOD-all` suggests that the evaluation scheme is too focused on the "90+" patient subset, where a large number of ties is present.
+
+## ID usage
+
+```{r echo=FALSE}
+## Load the ROSMAP metadata and pairs definition and match them up
+P <- loadPairs() %>% inner_join( loadROSMAPMeta(), by="ID" )
+
+## Compute the total number of pairs in each scheme
+P %>% group_by( Estimate ) %>% summarize( nPairs = n()/2 ) %>%
+    kable("html", table.attr = 'id="idusage"') %>%
+    kable_styling( bootstrap_options = "striped", full_width = FALSE )
+```
+
+```{r echo=FALSE, message=FALSE, fig.align='center', fig.width=7, fig.height=4, out.width="60%"}
+## Reusable histogram plotter
+fhist <- function(g) { g + geom_histogram(binwidth=1, fill="steelblue", alpha=0.75) +
+                           theme_bw() + bold_theme() +
+                           facet_wrap( ~Estimate, scales="free" ) }
+
+## Compute the number of times each ID is used in each scheme
+IDN <- P %>% group_by( Estimate, ID ) %>% summarize( nOccur = n() ) %>% ungroup
+(ggplot( IDN, aes(x=nOccur) ) + xlab("Number of occurrences")) %>% fhist
+```
+
+The table shows the total number of pairs considered by each individual pair selection scheme. Interestingly, `AOD-one`, `Current` and `ID-reuse` all produce a set of 250 pairs. `AOD-all` contains many more pairs; again, this is likely due to a large number of ties among the "90+" samples.
+
+The figure shows the number of pairs that each sample ID participates in. As expected, `All-pairs` contains two distinct peaks: all "A" samples are considered `#C` times and all "C" samples are considered `#A` times. `ID-reuse` correctly minimizes the number of times each sample is reused, with all samples being considered by no more than three pairs each. `AOD-all` appears as a superimposition of `AOD-one` (which corresponds to the non-"90+" subset) and the two-peak distribution that is association with the all possible A-vs-C pairs of the "90+" subset.
+
+## Distribution of AOD across pairs
+
+```{r echo=FALSE, message=FALSE, fig.align="center", fig.width=7, fig.height=4}
+## Plot the age distribution captured by each scheme
+ggplot( P, aes(x=AOD) ) %>% fhist
+```
+
+The plot above shows that each scheme generally captures the same distribution of ages across all samples that it considers. The only exception is `AOD-all`, which disproportionately samples from the "90+" category.
+
+```{r echo=FALSE, message=FALSE, fig.align="center", fig.width=7, fig.height=4}
+    ## Compute the "age distance" between each pair
+    ## Plot the distribution of these distances across each scheme
+    AD <- P %>% group_by( pair_index, Estimate ) %>% summarize( ADist = abs(AOD[1]-AOD[2]) )
+    ggplot( AD, aes(x=ADist) ) %>% fhist
+```
+
+The plot above shows the distribution of age distances (computed as `abs( AOD[1] - AOD[2] )`, where `1` and `2` index the samples in the pair) captured by each pair selection scheme. The plot demonstrates that `AOD-all` and `AOD-one` correctly minimize the `AOD` distance between corresponding pairs of samples.
+
+## Performance estimates for Braak and AOD
+
+```{r echo=FALSE, message=FALSE}
+    ## Positive control:
+    ## Compare Braak AUC estimates to the BTR output
+    BB <- loadBKAUCs() %>% group_by( Estimate, Size ) %>%
+        summarize( BTR = mean(AUC) ) %>% ungroup
+    AA %>% filter( Labels == "Braak" ) %>% group_by( Estimate, Size ) %>%
+        summarize( REst = mean(AUC) ) %>% ungroup() %>% inner_join( BB ) %>%
+        group_by(Estimate) %>% summarize( Cor = cor(REst, BTR) ) %>%
+        kable("html", table.attr = 'id="perfcompare"') %>%
+        kable_styling( bootstrap_options = c("striped","compact"), full_width = FALSE )
+```
+
+We used information from the `Runs/` directories (https://www.synapse.org/#!Synapse:syn12299033) to compute performance estimates for Braak and AOD columns. The computations were done using the same R code for both variables. As a positive control, we compared Braak performance estimates against BTR-derived estimates, where we observed a near-perfect correspondence (computed as Pearson correlation) between all values in each pair selection scheme.
+
+```{r echo=FALSE, message=FALSE, fig.align="center", fig.width=7, fig.height=3}
+    ## Load cached AUC estimates
+    AA <- syn( "syn14716566" ) %>% read_csv( col_types=cols() )
+
+    ## Create a summary plot
+    ggplot( AA, aes( x = Size, y = AUC, color = Estimate ) ) +
+        theme_bw() + geom_smooth( se=FALSE ) + bold_theme() +
+        facet_wrap( ~Labels, nrow=1 ) + scale_color_few()
+```
+
+The figure demonstrates that the `AOD-*` pair selection schemes correctly reduce the confounding effect of `AOD` in performance estimates. Going forward, we suggest using `AOD-one` as the main selection scheme, as it leads to the lowest estimate of `AOD` prediction performance (where lower values are more desirable) at the expense of minor decrease in `Braak` performance estimates (where higher values are more desirable). An additional observation is that `ID-reuse` seems to approximate `All-pairs` the closest; in the absence of confounding factors, this scheme might be the best choice for subsampling the space of all pairs.
