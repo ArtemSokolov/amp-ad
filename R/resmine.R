@@ -8,10 +8,6 @@ library( assertr )
 
 synapseLogin()
 
-## Retrieves a file from synapse to local disk and returns its local path
-syn <- function( id, dlc = "~/data/AMP-AD" )
-{ synGet( id, downloadLocation = dlc )@filePath }
-
 ## Retrieves file names associated with a synapse IDs
 ## Works on vectors of ids
 synName <- function( ids )
@@ -46,19 +42,24 @@ synq <- function( what, ... )
 }
 
 ## Lists all settings files available in a given Synapse directory
-listSettings <- function( parentId = "syn12180241" )
+## parentId may be one of "mayo", "rosmap", "msbb", or a synapse ID
+listSettings <- function( parentId )
 {
+    ## Map parentId to the appropriate synapse ID if provided as a keyword
+    vMap <- c( "mayo" = "syn12180241", "rosmap" = "syn15589860", "msbb" = "syn15588043" )
+    if( str_to_lower(parentId) %in% names(vMap) ) parentId <- vMap[str_to_lower(parentId)]
+    
     synq( c("id","name","settings_md5"), parentId = parentId, type = "settings" )
 }
 
-## A clean version of listSettings() that parses the file name into its
-##   Dataset, Strategy and Linearity components
-allSettings <- function()
+## A clean version of listSettings() that parses the file name into chunks
+allSettings <- function( parentId )
 {
-    listSettings() %>% filter(grepl( "settings", name )) %>%
+    listSettings( parentId ) %>% filter(grepl( "^settings", name )) %>%
         mutate( chunks = str_split(str_sub(name, 1, -6), "\\_") ) %>%
         mutate( Dataset = map_chr(chunks, nth, 2),
-               Linearity = map_chr(chunks, nth, 4),
+               Region = map_chr(chunks, nth, 3),
+               Method = map_chr(chunks, nth, 4),
                Strategy = map_chr(chunks, nth, 5),
                Task = map_chr(chunks,6) ) %>%
         select( -id, -name, -chunks )

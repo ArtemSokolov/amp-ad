@@ -3,13 +3,6 @@
 ##
 ## by Artem Sokolov
 
-library( tidyverse )
-library( synapseClient )
-library( ggthemes )
-library( plotly )
-
-synapseLogin()
-
 ## Retrieves a file from synapse to local disk and returns its local path
 syn <- function( id, dlc = "~/data/AMP-AD" )
 { synGet( id, downloadLocation = dlc )@filePath }
@@ -17,7 +10,6 @@ syn <- function( id, dlc = "~/data/AMP-AD" )
 ## Loads the requested stats file, and pads it with additional columns
 synStats <- function( id, ... )
 {
-    cat( "Loading", id, "...\n" )
     syn( id ) %>% read_csv( col_types=cols() ) %>%
         select( URL = id, AUC ) %>% mutate( ... )
 }
@@ -41,10 +33,11 @@ myplot <- function( X, xlabel, ylabel )
                         font = list( size=20, face="bold" ),
                         x=1.02, xanchor="left", y=0.8, yanchor="bottom",
                         legendtitle=TRUE, showarrow=FALSE ) %>%
-        layout( legend=list(y=0.8, yanchor="top" ) )
+        layout( legend=list(y=0.8, yanchor="top" ) ) %>%
+        htmltools::div( align="center" )
 }
 
-main <- function()
+loadAllStats <- function()
 {
     ## Identify results associated with each pair selection scheme
     ids <- list(
@@ -64,16 +57,4 @@ main <- function()
     SS <- map( ids, map, synStats ) %>% map( bind_rows, .id="Task" ) %>%
         bind_rows( .id="PairSel" ) %>% inner_join( MLINCS ) %>% select( -URL ) %>%
         spread( PairSel, AUC )
-
-    ## Generate all pair-wise plots
-    SS %>% rename( x = CCno, y = PRno ) %>%
-        myplot( "Class calls, no AOD minimization", "Probabilities, no AOD minimization" )
-    SS %>% rename( x = PRno, y = PRyes ) %>%
-        myplot( "Probabilities, no AOD minimization", "Probabilities, w/ AOD minimization" )
-    SS %>% rename( x = CCno, y = PRyes ) %>%
-        myplot( "Class calls, no AOD minimization", "Probabilities, w/ AOD minimization" )
-
-    ## Store the plots to files
-    ##    htmlwidgets::saveWidget( pp, "minAOD-comparison.html" )
 }
-

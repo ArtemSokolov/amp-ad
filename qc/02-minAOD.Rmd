@@ -1,0 +1,40 @@
+---
+title: "The effect of class calls and confounder-minimizing pair selection"
+author: Artem Sokolov
+---
+
+```{r setup, message=FALSE, echo=FALSE}
+library( tidyverse )
+library( ggthemes )
+library( plotly )
+library( synapseClient )
+synapseLogin()
+source( "02-minAOD.R" )
+```
+
+We evaluate the impact of two minor modifications to the analysis pipeline.
+
+1. Previously, predictors would output class calls, which were then directly compared in a leave-pair-out cross-validation setting. The discrete nature of these calls resulted in many ties, and we suspect that this led to an overall downward trend in performance. In the new set of runs, we designed predictors to output probabilities of class call being positive instead. We hypothesize that this modification will result in fewer ties during ranking of left-out pairs.
+
+2. As discussed in the previous vignette, the pair selection scheme can have a drastic effect on performance. After settling on a scheme that selects a pair match based on the closest distance in the age space, we aim to systematically evaluate the new scheme across all three tasks.
+
+All results presented in this vignette were collected on ROSMAP dataset using linear (logistic regression) predictors.
+
+### Class calls vs. probabilities
+
+```{r echo=FALSE, message=FALSE}
+SS <- loadAllStats()
+SS %>% rename( x = CCno, y = PRno ) %>%
+    myplot( "Class calls, no AOD minimization", "Probabilities, no AOD minimization" )
+```
+
+We observe a wider dynamic range when predictors output probabilities instead of fixed class calls. This includes values below 0.5 at the low end, which is the expected negative bias in low-sample high-noise prediction problems. Conversely, we observe an increase in performance estimates when predictors contain some signal.
+
+### AOD minimization
+
+```{r echo=FALSE, message=FALSE}
+SS %>% rename( x = PRno, y = PRyes ) %>%
+    myplot( "Probabilities, no AOD minimization", "Probabilities, w/ AOD minimization" )
+```
+
+Consistent with the previous vignette, we observe a slight downward trend in performance estimation. Outside on that downward shift, the estimates are fairly consistent across all three tasks.

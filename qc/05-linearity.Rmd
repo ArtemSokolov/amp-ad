@@ -1,0 +1,35 @@
+---
+title: "Systematic comparison of linear and non-linear methods"
+author: Artem Sokolov
+---
+
+```{r setup, echo=FALSE, message=FALSE}
+source( "05-linearity.R" )
+```
+
+We systematically compare three methods across all datasets / tasks. The methods are:
+
+1. `sklLR` - Logistic Regression from `scikit-learn`. Linear predictor.
+2. `sklRFC` - Random Forest Classifier from `scikit-learn`. Non-linear predictor.
+3. `xgb` - Boosted random forest from `xgboost`. Non-linear predictor.
+
+All methods are evaluated in leave-pair-out cross-validationusing AOD-minimizing pair selection scheme.
+
+### ROSMAP
+
+```{r echo=FALSE, message=FALSE, fig.align="center", fig.width = 9, fig.height=3}
+perfPlot( idsROSMAP() )
+```
+
+### Mayo
+
+```{r echo=FALSE, message=FALSE, fig.align="center", fig.width = 9, fig.height=4.5}
+perfPlot( idsMayo() )
+```
+
+### MSBB
+
+```{r echo=FALSE, message=FALSE, fig.align="center", fig.width = 9, fig.height=7.5}
+perfPlot( idsMSBB() )
+```
+
