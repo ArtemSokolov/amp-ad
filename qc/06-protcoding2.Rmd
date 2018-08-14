@@ -1,0 +1,16 @@
+---
+title: Downsampling to protein coding regions
+author: Artem Sokolov
+---
+
+```{r setup, echo=FALSE, message=FALSE}
+source( "06-protcoding2.R" )
+```
+
+We perform another pass at computing the effect of downsampling to protein coding regions on predictor performance. Unlike the [previous vignette](03-protcoding.html) on the topic, we take care to ensure that there is no secondary factor at play. The only distinction between corresponding runs is the size of the gene space. All results in this vignette were derived on ROSMAP dataset.
+
+```{r echo=FALSE, message=FALSE, fig.align="center", fig.width=11, fig.height=4}
+mainPlot()
+```
+
+We observe that there is a marginal improvement in performance when the gene space is reduced to protein coding regions.
