@@ -7,8 +7,6 @@ library( tidyverse )
 library( synapseClient )
 library( LiblineaR )
 
-synapseLogin()
-
 syn <- function( id )
 { synGet( id, downloadLocation = "~/data/AMP-AD/one-off" )@filePath }
 

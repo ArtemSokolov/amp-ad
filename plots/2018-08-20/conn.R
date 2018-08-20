@@ -3,6 +3,9 @@
 ## by Artem Sokolov
 
 source( "../../R/lpocv.R" )
+source( "api.R" )
+
+synapseLogin()
 
 ## Generates a collection of feature sets of the desired size
 ## Stores the collection to a local file
@@ -65,11 +68,28 @@ corFeatSets <- function()
     map_dbl( XX, avePWCor ) %>% data_frame( PWCor = ., Tag = names(.) ) %>% write_csv( "fs250-cor.csv" )
 }
 
+## Computes average diffusion score for the generated feature sets
+## Stores results to local file
+dfFeatSets <- function()
+{
+    ## Load the feature setss and PathwayCommons diffusion matrix
+    load( "featSets250.RData" )
+    load( "~/data/PathwayCommons/v10/dfsn.RData" )
+
+    ## Reduce everything to a common set of gene names
+    rr <- map( S, intersect, rownames(Df) ) %>% map_dbl( ~sum(Df[.x,.x]) )
+    enframe( rr, "Tag", "Dfsn" ) %>% write_csv( "fs250-dfsn.csv" )
+}
+
 main <- function()
 {
-    ## Load correlation and performance measures
-    RR <- inner_join( read_csv( "fs250-cor.csv", col_types = cols() ),
-                     read_csv( "fs250-perf.csv", col_types = cols() ) )
+    ## Load all the relevant files
+    RR <- c("fs250-cor.csv", "fs250-perf.csv", "fs250-dfsn.csv") %>% str_c( "data/", . ) %>%
+        map( ~read_csv(.x, col_types=cols()) ) %>% plyr::join_all(by="Tag")
 
-    ggplot( RR, aes( x=PWCor, y=AUC ) ) + theme_bw() + geom_point()
+    gg1 <- ggplot( RR, aes( x=PWCor, y=AUC ) ) + theme_bw() + bold_theme() +
+        geom_point() + xlab( "Average Pairwise Correlation" )
+    gg2 <- ggplot( RR, aes( x=Dfsn, y=AUC ) ) + theme_bw() + bold_theme() +
+        geom_point() + xlab( "Total Diffusion on PathwayCommons Network" )
+    gridExtra::arrangeGrob( gg1, gg2, nrow=1 ) %>% ggsave( "plots/conn.png", ., width=10, height=5 )
 }
