@@ -3,10 +3,17 @@
 ## by Artem Sokolov
 
 library( tidyverse )
-library( synapseClient )
-library( assertr )
+library( synapser )
 
-synapseLogin()
+synLogin()
+
+## Moves Synapse entity synID to folder destID
+synMove <- function( synID, destID )
+{
+    s <- synGet( synID, downloadFile = FALSE )
+    s$properties$parentId <- destID
+    invisible(synStore(s, forceVersion=FALSE))
+}
 
 ## Retrieves file names associated with a synapse IDs
 ## Works on vectors of ids
@@ -14,7 +21,7 @@ synName <- function( ids )
 {
     ## Isolate the unique set of ids and retrieve the name for each
     idMap <- unique(ids) %>% purrr::set_names() %>%
-        map( ~synGet( .x, downloadFile=FALSE )@properties$name )
+        map( ~synGet( .x, downloadFile=FALSE )$properties$name )
 
     ## Extend the mapping to all the requested values
     unlist( idMap )[ids]
@@ -32,13 +39,13 @@ synq <- function( what, ... )
         imap( ~str_c('"', .y, '"=="', .x, '"') ) %>% str_flatten(" and ")
 
     ## Compose the query and pass it to Synapse API
-    qq <- str_c( "select ", fields, " from file where ", cond )
+    qq <- str_c( "select ", fields, " from entity where ", cond )
     cat( qq, "\n" )
-    QQ <- synQuery(qq)
-    if( is.null(QQ) )
+    QQ <- synQuery(qq)$results %>% bind_rows
+    if( nrow(QQ) == 0 )
         purrr::set_names(what) %>% map_dfc( ~character() )
     else
-        as_data_frame(QQ) %>% rename_all( ~str_split( ., "\\.", simplify=TRUE )[,2] )
+        QQ %>% rename_all( ~str_split( ., "\\.", simplify=TRUE )[,2] )
 }
 
 ## Lists all settings files available in a given Synapse directory
@@ -49,7 +56,7 @@ listSettings <- function( parentId )
     vMap <- c( "mayo" = "syn12180241", "rosmap" = "syn15589860", "msbb" = "syn15588043" )
     if( str_to_lower(parentId) %in% names(vMap) ) parentId <- vMap[str_to_lower(parentId)]
     
-    synq( c("id","name","settings_md5"), parentId = parentId, type = "settings" )
+    synq( c("id","name","settings_md5"), parentId = parentId, type = "settings" ) %>% unnest
 }
 
 ## A clean version of listSettings() that parses the file name into chunks
