@@ -1,0 +1,52 @@
+---
+title: "Digital Gene Expression"
+author: "Artem Sokolov"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source( "07-DGE.R")
+```
+
+## Introduction
+
+We present a set of quality controls for Digital Gene Expression (DGE) data. The data was collected by profiling a number of drugs on human neuroprogenitor cell lines that differentiate into a mixed culture of neurons, glia and oligodendroctyes to further refine the drugs' mechanisms of action in relevant cell types. The wrangled pre-QC data (both counts and metadata matrcies) are taken from Synapse at `syn15670907`. The quality controls span the following:
+
+* Total assessment of RNA counts that map to each well
+* Clustering of controls and stressors
+* Differential gene expression and pathway enrichment
+
+## Total counts
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.height=2, fig.width=8}
+## Load the data
+X <- syn( "syn11948496" ) %>% read_csv( col_types = cols() )
+Y <- syn( "syn11948497" ) %>% read_csv( col_types = cols() )
+    
+## Compute the total number of counts in each well
+CC <- X %>% summarize_at( vars(-HUGO), sum ) %>% gather( Well, TotalCounts )
+plot_totalCounts( CC )
+```
+
+From the plot we observe that the vast majority of the 384 wells have at least 100k reads that mapped to them. Wells with fewer than 100k reads correspond to a handful of specific drugs. Higher concentrations of these drugs result in fewer reads, suggesting that the drugs are toxic or act as stressors. The only exception is the P11 well, which had only 69 reads map to it; we believe this is a technical issue with the primer sequence and **the P11 well should be discarded**.
+
+## Clustering of controls and stressors
+
+```{r, echo=FALSE, fig.align='center', fig.height=5, fig.width=7}
+gg <- hmapDrugs( X, Y )
+grid::grid.draw(gg)
+```
+
+As expected, wells treated with naked dsRNA cluster together with wells where dsRNA was transfected into the cells using lipofectamine. Two of the DMSO control wells (L09 and O14) clustered with Lipofectamine controls. Of those two, L09 only had 133k total RNA reads, which is the lowest of all wells considered in the heatmap; the next lowest numer of reads was 255k in well N17. **The recommended approach is to drop L09 and O14 from subsequent downstream analyses.**
+
+Lastly, LPS clusters with drug controls, which is expected as LPS does not induce transcriptional changes in cell cultures that lack microglia (PMID: 28099414).
+
+## Differential expression and pathway enrichment
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.width=7, fig.height=5}
+main_edgeR(X, Y)
+```
+
+EdgeR was used to compute a differential expression profile for dsRNA treatment (`naked dsRNA` and `dsRNA +lipo` wells) vs. controls. We observe a significant positive enrichment for immune signaling gene sets (`Schoggins_ISG`, `ReN_Proteomics`, `IFN_alpha`, `IFN_gamma`, and `IL2_STAT5`). The remaining four sets are included as negative controls.
+

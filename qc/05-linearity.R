@@ -5,12 +5,12 @@
 
 library( tidyverse )
 library( ggthemes )
-library( synapseClient )
-synapseLogin()
+library( synapser )
+synLogin()
 
 ## Retrieves a file from synapse to local disk and returns its local path
 syn <- function( id, dlc = "~/data/AMP-AD/QC/05" )
-{ synGet( id, downloadLocation = dlc )@filePath }
+{ synGet( id, downloadLocation = dlc )$path }
 
 ## Custom ggplot theme that boldifies text elements
 bold_theme <- function()

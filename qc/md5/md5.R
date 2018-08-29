@@ -10,7 +10,7 @@ synParentId <- function( ids )
 {
     ## Isolate the unique set of ids and retrieve the name for each
     idMap <- unique(ids) %>% purrr::set_names() %>%
-        map( ~synGet( .x, downloadFile=FALSE )@properties$parentId )
+        map( ~synGet( .x, downloadFile=FALSE )$properties$parentId )
 
     ## Extend the mapping to all the requested values
     unlist( idMap )[ids]
@@ -71,7 +71,8 @@ verifyMSBB <- function()
 
     ## Examine the problematic slice of data
     ## Conclusion: Missing a score and a stats file (easy to generate if needed)
-    Z <- filter( X, settings_md5 == "74d7759158dd5393bfaa4ea1fa24fd2b" )$Files[[1]]
+    ## UPDATE: Removed from consideration, because the focus is on linear models only
+    ## Z <- filter( X, settings_md5 == "74d7759158dd5393bfaa4ea1fa24fd2b" )$Files[[1]]
     
     ## Ensure that settings_md5 annotation matches the "grandparent" folder name
     Y <- findGParents(X, "MSBBpc")

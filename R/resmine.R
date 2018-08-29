@@ -56,7 +56,7 @@ listSettings <- function( parentId )
     vMap <- c( "mayo" = "syn12180241", "rosmap" = "syn15589860", "msbb" = "syn15588043" )
     if( str_to_lower(parentId) %in% names(vMap) ) parentId <- vMap[str_to_lower(parentId)]
     
-    synq( c("id","name","settings_md5"), parentId = parentId, type = "settings" ) %>% unnest
+    synq( c("id","name","settings_md5"), parentId = parentId, Type = "Settings" ) %>% unnest
 }
 
 ## A clean version of listSettings() that parses the file name into chunks
@@ -69,7 +69,7 @@ allSettings <- function( parentId )
                Method = map_chr(chunks, nth, 4),
                Strategy = map_chr(chunks, nth, 5),
                Task = map_chr(chunks,6) ) %>%
-        select( -id, -name, -chunks )
+        select( -name, -chunks )
 }
 
 ## Lists all files associated with a given settings md5 hash
