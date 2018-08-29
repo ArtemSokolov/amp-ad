@@ -141,7 +141,7 @@ ggplot( RR, aes( x=`All genes`, y=`Inhibitory only`, size=Size ) ) +
 
 <div style= "float:left; position:relative; top:-10px; margin:10px;">
 ```{r, echo=FALSE, out.width = "50px"}
-knitr::include_graphics("./LSP_Horiz-Logo.jpg")
+knitr::include_graphics("http://hits.harvard.edu/wp-content/uploads/2013/10/title_program_lsp1.png")
 ```
 </div>
 
