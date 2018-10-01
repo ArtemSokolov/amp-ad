@@ -7,47 +7,6 @@ library( synapser )
 
 synLogin()
 
-## Moves Synapse entity synID to folder destID
-synMove <- function( synID, destID )
-{
-    s <- synGet( synID, downloadFile = FALSE )
-    s$properties$parentId <- destID
-    invisible(synStore(s, forceVersion=FALSE))
-}
-
-## Retrieves file names associated with a synapse IDs
-## Works on vectors of ids
-synName <- function( ids )
-{
-    ## Isolate the unique set of ids and retrieve the name for each
-    idMap <- unique(ids) %>% purrr::set_names() %>%
-        map( ~synGet( .x, downloadFile=FALSE )$properties$name )
-
-    ## Extend the mapping to all the requested values
-    unlist( idMap )[ids]
-}
-
-## Robust version of synQuery
-## Returns a data frame with 0 rows, instead of NULL, if there are no matches
-synq <- function( what, ... )
-{
-    ## Assemble the field request
-    fields <- str_flatten(what, ",")
-
-    ## Assemble the requested conditions
-    cond <- enquos(...) %>% map( ~rlang::eval_tidy(.x) ) %>%
-        imap( ~str_c('"', .y, '"=="', .x, '"') ) %>% str_flatten(" and ")
-
-    ## Compose the query and pass it to Synapse API
-    qq <- str_c( "select ", fields, " from entity where ", cond )
-    cat( qq, "\n" )
-    QQ <- synQuery(qq)$results %>% bind_rows
-    if( nrow(QQ) == 0 )
-        purrr::set_names(what) %>% map_dfc( ~character() )
-    else
-        QQ %>% rename_all( ~str_split( ., "\\.", simplify=TRUE )[,2] )
-}
-
 ## Lists all settings files available in a given Synapse directory
 ## parentId may be one of "mayo", "rosmap", "msbb", or a synapse ID
 listSettings <- function( parentId )
@@ -56,7 +15,7 @@ listSettings <- function( parentId )
     vMap <- c( "mayo" = "syn12180241", "rosmap" = "syn15589860", "msbb" = "syn15588043" )
     if( str_to_lower(parentId) %in% names(vMap) ) parentId <- vMap[str_to_lower(parentId)]
     
-    synq( c("id","name","settings_md5"), parentId = parentId, Type = "Settings" ) %>% unnest
+    synExtra::synq( "id","name","settings_md5", parentId = parentId, Type = "Settings" ) %>% unnest
 }
 
 ## A clean version of listSettings() that parses the file name into chunks
@@ -75,7 +34,7 @@ allSettings <- function( parentId )
 ## Lists all files associated with a given settings md5 hash
 synBySettingsMd5 <- function( md5 )
 {
-    synq( c("id","name","parentId"), settings_md5 = md5 ) %>%
-        mutate( parentName = synName(parentId) )
+    synExtra::synq( "id","name","parentId", settings_md5 = md5 ) %>%
+        mutate( parentName = synExtra::synName(parentId) )
 }
 
