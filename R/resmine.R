@@ -38,3 +38,13 @@ synBySettingsMd5 <- function( md5 )
         mutate( parentName = synExtra::synName(parentId) )
 }
 
+## Identifies specific results files of interest
+## Example: synResults( "stats", Dataset == "ROSMAPpc", Task %in% c("AB","AC") )
+synResults <- function( resType, ... )
+{
+    c( "rosmap", "mayo", "msbb" ) %>% map( allSettings ) %>% bind_rows %>%
+        select( -Method, -Strategy, -id ) %>% filter( ... ) %>%
+        mutate( Files = map( settings_md5, synBySettingsMd5 ) ) %>%
+        mutate( Files = map( Files, filter, parentName == resType ) ) %>%
+        unnest %>% select( -settings_md5, -parentId )
+}
