@@ -42,6 +42,7 @@ vignettes/*.pdf
 # Data
 *.csv
 *.tsv
+*.xlsx
 
 # Plots
 *.png
