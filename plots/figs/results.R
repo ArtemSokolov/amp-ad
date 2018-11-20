@@ -14,13 +14,16 @@ syn_csv <- function( synid ) { syn(synid) %>% read_csv(col_types = cols()) }
 ##   source( "../../R/resmine.R" )
 ##   synResults( "stats", Region != "cerebellum" ) %>% filter( grepl("DGE", name) ) %>%
 ##     select( -name, -parentName ) %>% dput()
+## Dataset and Region names are then adjusted by hand:
+## 1. Removal of pc suffix from dataset names
+## 2. Recoding TempCortex as TCX
 indexDGE <- function()
 {
-    structure(list(Dataset = c("ROSMAPpc", "ROSMAPpc", "ROSMAPpc", "MAYOpc", "MAYOpc", "MAYOpc",
-                               "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc",
-                               "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc"),
-                   Region = c("DLPFC", "DLPFC", "DLPFC", "TempCortex", "TempCortex",
-                              "TempCortex", "BM10", "BM36", "BM44", "BM22", "BM36", 
+    structure(list(Dataset = c("ROSMAP", "ROSMAP", "ROSMAP", "MAYO", "MAYO", "MAYO",
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB",
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB"),
+                   Region = c("DLPFC", "DLPFC", "DLPFC", "TCX", "TCX",
+                              "TCX", "BM10", "BM36", "BM44", "BM22", "BM36", 
                               "BM10", "BM22", "BM10", "BM44", "BM36", "BM44", "BM22"),
                    Task = c("AB", "AC", "BC", "BC", "AB", "AC", "AC", "AB", "BC",
                             "BC", "AC", "AB", "AB", "BC", "AC", "BC", "AB", "AC"),
@@ -36,13 +39,16 @@ indexDGE <- function()
 ##   source( "../../R/resmine.R" )
 ##   synResults( "stats", Region != "cerebellum" ) %>% filter( grepl("Nienke", name) ) %>%
 ##     select( -name, -parentName ) %>% dput()
+## Dataset and Region names are then adjusted by hand:
+## 1. Removal of pc suffix from dataset names
+## 2. Recoding TempCortex as TCX
 indexMined <- function()
 {
-    structure(list(Dataset = c("ROSMAPpc", "ROSMAPpc", "ROSMAPpc", "MAYOpc", "MAYOpc", "MAYOpc",
-                               "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc",
-                               "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc"),
-                   Region = c("DLPFC", "DLPFC", "DLPFC", "TempCortex", "TempCortex",
-                              "TempCortex", "BM10", "BM36", "BM44", "BM22", "BM36", 
+    structure(list(Dataset = c("ROSMAP", "ROSMAP", "ROSMAP", "MAYO", "MAYO", "MAYO",
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB",
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB"),
+                   Region = c("DLPFC", "DLPFC", "DLPFC", "TCX", "TCX",
+                              "TCX", "BM10", "BM36", "BM44", "BM22", "BM36", 
                               "BM10", "BM22", "BM10", "BM44", "BM36", "BM44", "BM22"),
                    Task = c("AB", "AC", "BC", "BC", "AB", "AC", "AC", "AB", "BC",
                             "BC", "AC", "AB", "AB", "BC", "AC", "BC", "AB", "AC"),
@@ -58,13 +64,16 @@ indexMined <- function()
 ##   source( "../../R/resmine.R" )
 ##   synResults( "score", Region != "cerebellum" ) %>% filter( grepl( "background", name ) ) %>%
 ##     select( -name, -parentName ) %>% dput()
+## Dataset and Region names are then adjusted by hand:
+## 1. Removal of pc suffix from dataset names
+## 2. Recoding TempCortex as TCX
 indexBackground <- function()
 {
-    structure(list(Dataset = c("ROSMAPpc", "ROSMAPpc", "ROSMAPpc", "MAYOpc", "MAYOpc", "MAYOpc",
-                               "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc",
-                               "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc", "MSBBpc"),
-                   Region = c("DLPFC", "DLPFC", "DLPFC", "TempCortex", "TempCortex",
-                              "TempCortex", "BM10", "BM36", "BM44", "BM22", "BM36", 
+    structure(list(Dataset = c("ROSMAP", "ROSMAP", "ROSMAP", "MAYO", "MAYO", "MAYO",
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB",
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB"),
+                   Region = c("DLPFC", "DLPFC", "DLPFC", "TCX", "TCX",
+                              "TCX", "BM10", "BM36", "BM44", "BM22", "BM36", 
                               "BM10", "BM22", "BM10", "BM44", "BM36", "BM44", "BM22"),
                    Task = c("AB", "AC", "BC", "BC", "AB", "AC", "AC", "AB", "BC",
                             "BC", "AC", "AB", "AB", "BC", "AC", "BC", "AB", "AC"),
@@ -81,9 +90,7 @@ bkFromIndex <- function( IDX = indexBackground() )
 {
     IDX %>% mutate( BK = map(id, syn_csv), id=NULL ) %>%
         mutate_at( "BK", map, ~gather(.x, Size, AUC) ) %>%
-        mutate_at( "BK", map, ~mutate_at( .x, "Size", as.numeric ) ) %>%
-        mutate_at( "Dataset", str_sub, 1, -3 ) %>%
-        mutate_at( "Region", recode, TempCortex = "TCX" )
+        mutate_at( "BK", map, ~mutate_at( .x, "Size", as.numeric ) )
 }
 
 ## Annotates a results data frame with drug / target information
@@ -105,7 +112,5 @@ resFromIndex <- function( IDX )
     ## Generate a tag for each Dataset / Region / Task triplet
     csel <- c("URL" = "id","Size" = "intersect", "AUC", "p_value")
     IDX %>% mutate( Results = map(id, syn_csv) ) %>% select( -id ) %>%
-        mutate_at( "Results", map, annotateResults ) %>%
-        mutate_at( "Dataset", str_sub, 1, -3 ) %>%
-        mutate_at( "Region", recode, TempCortex = "TCX" )
+        mutate_at( "Results", map, annotateResults )
 }
