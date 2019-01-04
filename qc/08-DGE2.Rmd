@@ -1,0 +1,134 @@
+---
+title: "Digital Gene Expression (Second Experiment)"
+author: "Artem Sokolov"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library( tidyverse )
+
+## Set up the downloaders
+## Use syn1 to download files from the first DGE experiment
+## Use syn2 to download files from the second DGE experiment
+synapser::synLogin()
+syn1 <- synExtra::synDownloader( "~/data/AMP-AD/DGE" )
+syn2 <- synExtra::synDownloader( "~/data/AMP-AD/DGE2" )
+```
+
+## Total number of transcript counts that map to each well
+
+We begin by quantifying the number of transcripts that mapped to each well. The plot below shows the distribution of counts across 384 wells for the two plates. The old P11 probe is highlighted in the original plate.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.height=3, fig.width=8}
+## Load the counts data from both runs
+X1 <- syn1( "syn11948496" ) %>% read_csv( col_types=cols() )
+X2 <- syn2( "syn17114495" ) %>% read_csv( col_types=cols() )
+
+## Reduce to a common gene set
+gcom <- intersect( X1$HUGO, X2$HUGO )
+X1 <- X1 %>% filter( HUGO %in% gcom ) %>% arrange( HUGO )
+X2 <- X2 %>% filter( HUGO %in% gcom ) %>% arrange( HUGO )
+stopifnot( all(X1$HUGO == X2$HUGO) )
+
+## Tally up the counts
+C1 <- X1 %>% summarize_at( vars(-HUGO), sum ) %>% gather( Well, `Total Counts` )
+C2 <- X2 %>% summarize_at( vars(-HUGO), sum ) %>% gather( Well, `Total Counts` )
+CC <- list( DGE1 = C1, DGE2 = C2 ) %>% bind_rows( .id = "Plate" )
+
+## Generate summary boxplots
+ggplot( CC, aes(x=Plate, y=`Total Counts`) ) + theme_bw() + geom_boxplot() +
+    scale_y_continuous( trans="log10" ) + coord_flip() +
+    geom_text( data = filter(CC, `Total Counts` < 100), aes(label="P11_old"), vjust=1.5 ) +
+    theme( axis.title = element_text( size=12, face="bold" ),
+          axis.text = element_text( size=12, face="bold" ) )
+```
+
+Overall, we observe that the old plate had a higher number of transcripts per well. This could be due to the difference in the set of drugs profiled in the two experiments. We repeat the quantification after reducing the set of wells for each plate down to the common set of treatments.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.height=3, fig.width=8}
+## Load the matching metadata
+Y1 <- syn1("syn11948497") %>% read_csv( col_types=cols() ) %>% mutate_at("Drug", str_to_lower) %>%
+    mutate_at( "Concentration", str_sub, 1, -3 ) %>% mutate_at( "Concentration", as.double )
+Y2 <- syn2("syn17114496") %>% read_csv( col_types=cols() ) %>% mutate_at("Drug", str_to_lower) %>%
+    mutate_at( "Concentration", as.double )
+
+## Identify wells that contain common data
+dcom <- intersect( Y1$Drug, Y2$Drug )
+W1 <- Y1 %>% filter( Drug %in% dcom, Concentration %in% c(1,10) )
+W2 <- Y2 %>% filter( Drug %in% dcom, Concentration %in% c(1,10) )
+
+## Compose a count tally for the common data only
+WW <- list( DGE1 = inner_join(C1,W1), DGE2 = inner_join(C2,W2) ) %>% bind_rows( .id="Plate" )
+
+## Plot the tallies
+ggplot( WW, aes(x=Plate, y=`Total Counts`, color=Drug) ) + theme_bw() + 
+    geom_point(aes(size=Concentration), alpha=0.5) +
+    scale_y_continuous( trans="log10" ) +
+    scale_size( range=c(2,5), breaks=c(1,5), labels=c("1uM","10uM") ) +
+    ggthemes::scale_color_few() + coord_flip() +
+    theme( axis.title = element_text( size=12, face="bold" ),
+          axis.text = element_text( size=12, face="bold" ) )
+```
+
+However, even for the common set of drugs/concentrations, we observe that the original plate had a slightly higher number of transcripts that mapped to each well.
+
+## Correlation between replicates within and across plates
+
+Next, we look at how well the expression profiles correlate across replicates, both within and across the two plates. The table below shows average Pearson correlation values for each Drug / Concentration pair.
+
+```{r echo=FALSE, message=FALSE}
+## Computes the mean of off-diagonal entries
+mean_offd <- function(A) { mean(A[row(A)!=col(A)]) }
+
+## Identify wells corresponding to the common treatments on each plate
+WS1 <- W1 %>% nest(-Drug, -Concentration, .key="Wells1") %>% mutate_at("Wells1", map, pull, "Well") %>%
+    mutate_at( "Wells1", map, `[`, 1:3 )
+WS2 <- W2 %>% nest(-Drug, -Concentration, .key="Wells2") %>% mutate_at("Wells2", map, pull, "Well")
+WS <- inner_join( WS1, WS2 ) %>% rename( Conc. = Concentration ) %>%
+    mutate( Z1 = map(Wells1, ~select(X1,.x)), Z2 = map(Wells2, ~select(X2,.x)) ) %>%
+    mutate( C1 = map(Z1, ~cor(.x,.x)), C2 = map(Z2, ~cor(.x,.x)), CC = map2(Z1,Z2,cor) ) %>%
+    mutate( Within1 = map_dbl(C1, mean_offd), Within2 = map_dbl(C2, mean_offd),
+           Across = map_dbl(CC,mean) ) %>% select( Drug, Conc., Within1:Across ) %>%
+    arrange( Conc., Drug ) %>% mutate_at( vars(Within1:Across), round, 3 )
+knitr::kable(WS, format="html", escape=FALSE) %>%
+    kableExtra::kable_styling( bootstrap_options = "striped", full_width = FALSE )
+```
+
+In general, the replicates on the second plate are just as internally consistent as the replicates on the first plate. As expected, the consistency of replicates across the two plates is lower.
+
+We also look at whether transcriptional profiles cluster by treatment or by plate.
+
+```{r echo=FALSE, fig.align='center', fig.height=5.5, fig.width=7}
+## Pull all relevant info into a common data frame
+HH <- list( DGE1=W1, DGE2=W2 ) %>% map( filter, Concentration==10 ) %>%
+    map( select, -Concentration ) %>% map( nest, Well, .key=Wells ) %>%
+    map( mutate_at, "Wells", map, pull, "Well" ) %>%
+    map2( list(X1,X2), ~mutate(.x, Z=map(Wells, partial(select,.y)) ) ) %>%
+    bind_rows( .id = "Plate" )
+
+## Compute the correlation matrix and metadata information
+hdata <- bind_cols(HH$Z) %>% cor
+hmeta <- HH %>% select( -Z ) %>% unnest() %>% as.data.frame %>% column_to_rownames("Wells")
+hcol <- list( Plate = c(DGE1 = "gray40", DGE2 = "gray80"),
+             Drug = set_names( ggthemes::few_pal()(4), unique(hmeta$Drug) ) )
+
+## Plot the heatmap
+pheatmap::pheatmap( hdata, annotation_row = hmeta, annotation_colors = hcol )
+```
+
+We note that for the most part samples cluster according to their source plate, rather than treatment. This suggests that each plate should be processed independently, as the batch effect prevents pooling of the data without any correction.
+
+## DMSO controls on the second plate
+
+Lastly, we check the DMSO wells on the second plate for internal consistency
+
+```{r echo=FALSE, fig.align='center', fig.height=4.5, fig.width=5}
+## Cluster the DMSO wells
+vDMSO <- Y2 %>% filter( is.na(Concentration) ) %>% pull( "Well" )
+P <- X2 %>% select( one_of(vDMSO) ) %>% as.matrix %>% cor
+pheatmap::pheatmap( P )
+```
+
+We observe that wells E01 and M21 appear to be slight outliers and recommend their exclusion from the analysis.
+
