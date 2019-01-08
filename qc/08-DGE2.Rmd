@@ -132,3 +132,28 @@ pheatmap::pheatmap( P )
 
 We observe that wells E01 and M21 appear to be slight outliers and recommend their exclusion from the analysis.
 
+## Comparison of differential gene expression signatures
+
+In general, correlation between full-transcriptome profiles of log fold-change values is pretty low. This is expected, since a large number of genes are not substantially perturbed by the corresponding treatments. Instead, we identify the genes that were significantly (FDR < 0.05) differentially expressed between treatment and controls on each plate. We then compute how many of these were in common between the two plates.
+
+```{r echo=FALSE}
+## Load differential gene expression results
+DX1 <- syn1("syn15674107") %>% read_csv( col_types=cols() ) %>% mutate_at("Drug", str_to_lower)
+DX2 <- syn2("syn17167348") %>% read_csv( col_types=cols() ) %>% mutate_at("Drug", str_to_lower)
+
+## Reduce to a common set of drugs and genes
+dcom <- intersect( DX1$Drug, DX2$Drug )
+gcom <- intersect( DX1$Gene, DX2$Gene )
+DX1 <- filter( DX1, Drug %in% dcom, Gene %in% gcom ) %>% arrange( Drug, Gene )
+DX2 <- filter( DX2, Drug %in% dcom, Gene %in% gcom ) %>% arrange( Drug, Gene )
+
+## Identify significantly 
+DX <- inner_join( nest(DX1, -Drug, .key="Plate1"), nest(DX2, -Drug, .key="Plate2"), by="Drug" ) %>%
+    mutate_at( vars(Plate1, Plate2), map, ~filter(.x, FDR < 0.05) ) %>%
+    mutate_at( vars(Plate1, Plate2), map, pull, "Gene" ) %>%
+    mutate( InCommon = map2(Plate1, Plate2, intersect) ) %>%
+    mutate_at( vars(-Drug), map_int, length )
+
+knitr::kable(DX, format="html") %>%
+    kableExtra::kable_styling( bootstrap_options = "striped", full_width = FALSE )
+```

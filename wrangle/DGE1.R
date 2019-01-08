@@ -76,9 +76,11 @@ preQC <- function()
 postQC <- function()
 {
     ## Load pre-QC matrices
+    ## Simplify the Concentration column by dropping the micromolar unit
     X <- syn( "syn11948496" ) %>% read_csv( col_types = cols() )
-    Y <- syn( "syn11948497" ) %>% read_csv( col_types = cols() )
-
+    Y <- syn( "syn11948497" ) %>% read_csv( col_types = cols() ) %>%
+        mutate( Concentration = as.numeric( str_split( Concentration, "u", simplify=TRUE )[,1] ) )
+    
     ## Remove well P11 due to primer sequence issue
     ## Remove DMSO wells L09 and O14 because they cluster with Lipo controls
     vRemove <- c( "P11", "L09", "O14" )
@@ -86,59 +88,3 @@ postQC <- function()
     X %>% select( -one_of(vRemove) ) %>% write_csv( "postqc-counts.csv" )
 }
 
-## edgeR analysis applied to drug-vs-control dichotomy
-dvc_edgeR <- function( drugName, X, Y )
-{
-    cat( "Comparing", drugName, "against controls\n" )
-    
-    Y1 <- filter( Y, Drug %in% c( drugName, "Drug control" ) ) %>% replace_na( list(Conc=0) ) %>%
-        group_by( Drug ) %>% top_n( 1, Conc ) %>% ungroup %>% select( Well, Drug ) %>%
-        as.data.frame %>% column_to_rownames("Well")
-    X1 <- X %>% select( HUGO, rownames(Y1) ) %>% as.data.frame %>% column_to_rownames("HUGO")
-
-    ## Create the design matrix and estimate dispersion
-    dl <- edgeR::DGEList( counts = X1, samples = Y1 )
-    dl <- edgeR::calcNormFactors( dl )
-    mmx <- model.matrix( ~Drug, data = dl$samples )
-    dl <- edgeR::estimateDisp( dl, mmx )
-
-    ## Compute differential expression
-    gf <- edgeR::glmFit( dl, mmx ) %>% edgeR::glmLRT( coef = 2 )
-    RR <- edgeR::topTags( gf, nrow(X1) ) %>% as.data.frame %>% rownames_to_column( "Gene" )
-    RR
-}
-
-diffexp <- function()
-{
-    ## Load the data
-    X <- syn( "syn15673461" ) %>% read_csv( col_types=cols() )
-    Y <- syn( "syn15673460" ) %>% read_csv( col_types=cols() ) %>%
-        mutate( Conc = as.numeric( str_split( Concentration, "u", simplify=TRUE )[,1] ) ) %>%
-        select( -Concentration )
-
-    ## Identify drugs that are toxic by looking at the total number of counts in each well
-    ## Remove them from consideration
-    wKeep <- X %>% summarize_at( -1, sum ) %>% gather( Well, TotalCounts ) %>%
-        filter( TotalCounts > 1e5 ) %>% .$Well
-    Y <- Y %>% filter( Well %in% wKeep )
-
-    ## After the previous step, some of the drugs only have a single replicate at the top concentration
-    ## Go down to the next highest concentration by removing the single-repcliate wells
-    WW <- Y %>% group_by( Drug ) %>% filter( Conc == max(Conc) ) %>% mutate(nn=n()) %>% filter( nn==1 )
-    Y <- Y %>% filter( !(Well %in% WW$Well) )
-
-    ## Ensure that all top concentrations now have at least 2 replicates
-    nn <- Y %>% group_by( Drug ) %>% filter( Conc == max(Conc) ) %>% mutate(nn=n()) %>% .$nn
-    stopifnot( min(nn) > 1 )
-
-    ## Clip the counts matrix to match the remaining wells in the metadata
-    X <- X %>% select( HUGO, Y$Well )
-
-    ## Compose the set of drugs to consider
-    vDrugs <- c( "dsRNA +lipo", "Drug control", "Lipo control", "naked dsRNA", "LPS" ) %>%
-        setdiff( unique(Y$Drug), . )
-    
-    ## Traverse the drugs and compute differential expression for each
-    RR <- map( vDrugs, dvc_edgeR, X, Y ) %>% set_names( vDrugs )
-    bind_rows( RR, .id = "Drug" ) %>% write_csv( "diffexp.csv.gz" )
-}
