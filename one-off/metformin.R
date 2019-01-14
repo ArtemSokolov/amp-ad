@@ -23,6 +23,9 @@ read_gmt <- function( fn, iName=1 )
 
 main <- function()
 {
+    ## Function needs verficiation that all synapse IDs used are up-to-date
+    stopifnot(FALSE)
+    
     ## Retrieve differential expression signature for Metformin
     RR <- syn( "syn15674107" ) %>% read_csv( col_types=cols() ) %>% filter( Drug == "metformin" )
     RR %>% write_tsv( "metformin/dfexp-metformin.tsv" )

@@ -12,27 +12,45 @@ syn_csv <- function( synid ) { syn(synid) %>% read_csv(col_types = cols()) }
 
 ## Pre-defined index of DGE results, constructed using the following code:
 ##   source( "../../R/resmine.R" )
-##   synResults( "stats", Region != "cerebellum" ) %>% filter( grepl("DGE", name) ) %>%
-##     select( -name, -parentName ) %>% dput()
-## Dataset and Region names are then adjusted by hand:
-## 1. Removal of pc suffix from dataset names
-## 2. Recoding TempCortex as TCX
+##   synResults() %>% filter( Type == "stats", Region != "CBE" ) %>% unnest() %>%
+##     filter( grepl("DGE", fileName) ) %>% mutate( Plate = str_sub(fileName, 1, 4) ) %>%
+##     select( id = fileId, -fileName ) %>% dput()
 indexDGE <- function()
 {
-    structure(list(Dataset = c("ROSMAP", "ROSMAP", "ROSMAP", "MAYO", "MAYO", "MAYO",
-                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB",
-                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB"),
-                   Region = c("DLPFC", "DLPFC", "DLPFC", "TCX", "TCX",
-                              "TCX", "BM10", "BM36", "BM44", "BM22", "BM36", 
-                              "BM10", "BM22", "BM10", "BM44", "BM36", "BM44", "BM22"),
-                   Task = c("AB", "AC", "BC", "BC", "AB", "AC", "AC", "AB", "BC",
-                            "BC", "AC", "AB", "AB", "BC", "AC", "BC", "AB", "AC"),
-                   id = c("syn16787402", "syn16787438", "syn16787423", "syn16787399",
-                          "syn16787414", "syn16787417", "syn16787435", "syn16787447",
-                          "syn16787408", "syn16787411", "syn16787444", "syn16787432", 
-                          "syn16787405", "syn16787390", "syn16787420", "syn16787396",
-                          "syn16787393", "syn16787387")),
-              row.names = c(NA, -18L), class = c("tbl_df", "tbl", "data.frame"))
+    structure(list(Dataset = c("MAYO", "MAYO", "MAYO", "MAYO", "MAYO", 
+                               "MAYO", "ROSMAP", "ROSMAP", "ROSMAP", "ROSMAP", "ROSMAP", "ROSMAP", 
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", 
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", 
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB" ),
+                   Region = c("TCX", "TCX", "TCX", "TCX", "TCX", "TCX", "DLPFC", 
+                              "DLPFC", "DLPFC", "DLPFC", "DLPFC", "DLPFC", "BM10", "BM10", 
+                              "BM10", "BM10", "BM10", "BM10", "BM22", "BM22", "BM22", "BM22", 
+                              "BM22", "BM22", "BM36", "BM36", "BM36", "BM36", "BM36", "BM36", 
+                              "BM44", "BM44", "BM44", "BM44", "BM44", "BM44"),
+                   Task = c("AB", "AB", "AC", "AC", "BC", "BC", "AB", "AB", "AC", "AC", "BC", "BC", 
+                            "AB", "AB", "AC", "AC", "BC", "BC", "AB", "AB", "AC", "AC", "BC", 
+                            "BC", "AB", "AB", "AC", "AC", "BC", "BC", "AB", "AB", "AC", "AC", 
+                            "BC", "BC"),
+                   Type = c("stats", "stats", "stats", "stats", "stats", 
+                            "stats", "stats", "stats", "stats", "stats", "stats", "stats", 
+                            "stats", "stats", "stats", "stats", "stats", "stats", "stats", 
+                            "stats", "stats", "stats", "stats", "stats", "stats", "stats", 
+                            "stats", "stats", "stats", "stats", "stats", "stats", "stats", 
+                            "stats", "stats", "stats"),
+                   id = c("syn17434757", "syn17434764", 
+                          "syn17434797", "syn17434803", "syn17434524", "syn17434535", "syn17434578", 
+                          "syn17434582", "syn17435113", "syn17435116", "syn17434887", "syn17434893", 
+                          "syn17435027", "syn17435035", "syn17435069", "syn17435076", "syn17434396", 
+                          "syn17434399", "syn17434620", "syn17434623", "syn17434345", "syn17434352", 
+                          "syn17434709", "syn17434712", "syn17435234", "syn17435244", "syn17435191", 
+                          "syn17435197", "syn17434485", "syn17434488", "syn17434435", "syn17434445", 
+                          "syn17434836", "syn17434848", "syn17434664", "syn17434672"), 
+                   Plate = c("DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", 
+                             "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", 
+                             "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", 
+                             "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", 
+                             "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2")),
+              class = c("tbl_df", "tbl", "data.frame"), row.names = c(NA, -36L))
 }
 
 ## Pre-defined index of results for Nienke's gene sets, built by the following code:
@@ -110,7 +128,6 @@ resFromIndex <- function( IDX )
 {
     ## Fetch all the relevant results values
     ## Generate a tag for each Dataset / Region / Task triplet
-    csel <- c("URL" = "id","Size" = "intersect", "AUC", "p_value")
     IDX %>% mutate( Results = map(id, syn_csv) ) %>% select( -id ) %>%
         mutate_at( "Results", map, annotateResults )
 }
