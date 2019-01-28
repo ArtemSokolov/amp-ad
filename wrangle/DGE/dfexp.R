@@ -15,6 +15,7 @@ dvc_edgeR <- function( X, drugWells, ctrlWells, drugName )
 
     Y1 <- bind_rows( data_frame(Drug = drugName, Well = drugWells),
                     data_frame(Drug = "Control", Well = ctrlWells) ) %>%
+        mutate_at( "Drug", factor, levels=c("Control", drugName) ) %>%
         as.data.frame %>% column_to_rownames("Well")
     X1 <- X %>% select( HUGO, rownames(Y1) ) %>% as.data.frame %>% column_to_rownames("HUGO")
 
