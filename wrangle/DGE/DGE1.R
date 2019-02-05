@@ -77,9 +77,11 @@ postQC <- function()
 {
     ## Load pre-QC matrices
     ## Simplify the Concentration column by dropping the micromolar unit
+    ## Recode jq1 to (+)-jq1 to match the LINCS database
     X <- syn( "syn11948496" ) %>% read_csv( col_types = cols() )
     Y <- syn( "syn11948497" ) %>% read_csv( col_types = cols() ) %>%
-        mutate( Concentration = as.numeric( str_split( Concentration, "u", simplify=TRUE )[,1] ) )
+        mutate( Concentration = as.numeric(str_split(Concentration, "u", simplify=TRUE)[,1]) ) %>%
+        mutate_at( "Drug", recode, jq1 = "(+)-jq1" )
     
     ## Remove well P11 due to primer sequence issue
     ## Remove DMSO wells L09 and O14 because they cluster with Lipo controls

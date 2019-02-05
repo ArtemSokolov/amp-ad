@@ -5,7 +5,7 @@
 library( tidyverse )
 
 synapser::synLogin()
-syn <- synExtra::synDownloader( "~/data/AMP-AD" )
+syn <- synExtra::synDownloader( "~/data/AMP-AD", ifcollision="overwrite.local" )
 
 ## "Quiet" versions of read_tsv and read_csv
 readq_tsv <- function(...) read_tsv( col_types = cols(), ... )
@@ -71,36 +71,82 @@ genesets_smatch <- function( DX )
         mutate_at( vDS, map, pull, "Gene" ) %>% select(-DFX)
 }
 
+## Given a differential expression matrix, composes gene sets for each drug that
+##   consist of [significantly] differentially-expressed genes
+## Caps the number of genes at 300 (approximate size of the largest mined set)
+genesets_dfexp <- function( DX )
+{
+    ## Given a differential expression matrix (for a single drug), identifies and returns
+    ## genes with FDR < thresh. If there are fewer than atLeast such genes, returns
+    ## genes with PValue < thresh instead
+    top_genes <- function( .df, thresh = 0.05, atLeast=10 )
+    {
+        vFDR  <- with( .df, set_names(FDR, Gene) ) %>% keep( ~ .x < thresh ) %>% names
+        vpval <- with( .df, set_names(PValue, Gene) ) %>% keep( ~ .x < thresh ) %>% names
+        if( length(vFDR) < atLeast ) return(vpval)
+        vFDR
+    }
+
+    vDS <- c("ROSMAP","Mayo","MSBB")	## Dataset-specific column names
+    
+    ## Load gene space of each dataset
+    AA <- syn( "syn16204450" ) %>% read_gmt()
+
+    ## Subset the gene space to genes in common with each dataset
+    ee <- set_names(vDS) %>% map( ~expr( map(Raw, filter, Gene %in% AA[[!!.x]]) ) )
+    GS <- DX %>% mutate_at( "Drug", str_to_lower ) %>% nest( -Drug, .key="Raw" ) %>%
+        mutate( !!!ee, Raw=NULL ) %>% mutate_at( vDS, map, top_genes ) %>%
+        mutate_at( vDS, map_if, ~(length(.x) > 300), ~.x[1:300] )
+
+    ## Annotate with metadata
+    M <- syn("syn11801537") %>% read_csv() %>% mutate_at( "name", str_to_lower ) %>%
+        select( LINCSID = lincs_id, URL = link, Drug = name )
+    stopifnot( all(GS$Drug %in% M$Drug) )
+
+    inner_join( M, GS )
+}
+
 ## Takes the output of genesets_smatch() and concatenates it into tab-delimited
 ##   strings in preparation for writing to .gmt files
 prep4gmt <- function( GS )
 {
     GS %>% mutate( HDR = str_c( LINCSID, "\t", URL ) ) %>%
         mutate_at( vars(ROSMAP,Mayo,MSBB), map_chr, str_flatten, "\t" ) %>%
-        transmute_at( vars(ROSMAP,Mayo,MSBB), map2_chr, .$HDR, ~str_c(.y, "\t", .x) )
+        transmute_at( vars(ROSMAP,Mayo,MSBB), map2_chr, .$HDR, ~str_c(.y, "\t", .x) ) %>%
+        rename( MAYO = Mayo )
 }
 
 ## Processes DGE1 experiment
 DGE1 <- function()
 {
+    vDS <- c("ROSMAP", "MAYO", "MSBB")
+    
+    ## Load the raw differential expression matrix
+    DX <- syn( "syn15674107" ) %>% readq_csv()
+    
     ## Compute size-matched gene sets and concatenate into tab-delimited strings
-    RR <- syn( "syn15674107" ) %>% readq_csv() %>% genesets_smatch() %>% prep4gmt()
+    GSsm <- DX %>% genesets_smatch() %>% prep4gmt()
+    map( vDS, ~cat(GSsm[[.x]], sep="\n", file=str_c("DGE1-", .x, "-sm.gmt")) )
 
-    ## Save everything to .gmt files
-    cat( RR$ROSMAP, sep="\n", file="DGE1-ROSMAP-sm.gmt" )
-    cat( RR$Mayo, sep="\n", file="DGE1-MAYO-sm.gmt" )
-    cat( RR$MSBB, sep="\n", file="DGE1-MSBB-sm.gmt" )
+    ## Compute dfx-based gene sets and concatenate into tab-delimited strings
+    GSdfx <- DX %>% genesets_dfexp() %>% prep4gmt()
+    map( vDS, ~cat(GSdfx[[.x]], sep="\n", file=str_c("DGE1-", .x, "-dfx.gmt")) )
 }
 
 ## Processes DGE2 experiment
 DGE2 <- function()
 {
-    ## Compute size-matched gene sets and concatenate into tab-delimited strings
-    RR <- syn( "syn17167348" ) %>% readq_csv() %>% genesets_smatch() %>% prep4gmt()
+    vDS <- c("ROSMAP", "MAYO", "MSBB")
     
-    ## Save everything to .gmt files
-    cat( RR$ROSMAP, sep="\n", file="DGE2-ROSMAP-sm.gmt" )
-    cat( RR$Mayo, sep="\n", file="DGE2-MAYO-sm.gmt" )
-    cat( RR$MSBB, sep="\n", file="DGE2-MSBB-sm.gmt" )
+    ## Load the raw differential expression matrix
+    DX <- syn( "syn17167348" ) %>% readq_csv()
+    
+    ## Compute size-matched gene sets and concatenate into tab-delimited strings
+    GSsm <- DX %>% genesets_smatch() %>% prep4gmt()
+    map( vDS, ~cat(GSsm[[.x]], sep="\n", file=str_c("DGE2-", .x, "-sm.gmt")) )
+
+    ## Compute dfx-based gene sets and concatenate into tab-delimited strings
+    GSdfx <- DX %>% genesets_dfexp() %>% prep4gmt()
+    map( vDS, ~cat(GSdfx[[.x]], sep="\n", file=str_c("DGE2-", .x, "-dfx.gmt")) )
 }
 

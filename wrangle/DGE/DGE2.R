@@ -55,8 +55,10 @@ preQC <- function()
 postQC <- function()
 {
     ## Load pre-QC matrices
+    ## Fix kw2449 and AZD-1480 to match the LINCS database
     X <- syn( "syn17114495" ) %>% read_csv( col_types=cols() )
-    Y <- syn( "syn17114496" ) %>% read_csv( col_types=cols() )
+    Y <- syn( "syn17114496" ) %>% read_csv( col_types=cols() ) %>%
+        mutate_at( "Drug", recode, `KW-2449` = "KW2449", AZD1480 = "AZD-1480" )
     
     ## E01 and M21 are outlier DMSO wells; remove them
     vRemove <- c( "E01", "M21" )
