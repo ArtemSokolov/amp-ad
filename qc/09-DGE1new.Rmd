@@ -1,0 +1,141 @@
+---
+title: "DGE Protocol Evaluation"
+author: "Artem Sokolov"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library( tidyverse )
+
+## Set up the downloaders
+## Use syn1o to download files from the first DGE experiment (old protocol)
+## Use syn1n to download files from the first DGE experiment (new protocol)
+## Use syn2n to download files from the second DGE experiment
+synapser::synLogin()
+syn1o <- synExtra::synDownloader( "~/data/AMP-AD/DGE", ifcollision="overwrite.local" )
+syn1n <- synExtra::synDownloader( "~/data/AMP-AD/DGE1_new", ifcollision="overwrite.local" )
+syn2n <- synExtra::synDownloader( "~/data/AMP-AD/DGE2", ifcollision="overwrite.local" )
+```
+
+This vignette compares DGE data collected under two protocols, labeled `old` and `new`. The comparison involves DGE1 plate sequenced under both protocols, as well as DGE2, which was sequenced using the new protocol only.
+
+## Total number of transcripts that map to each well
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.height=3, fig.width=8}
+## Load the counts data from all runs
+XX <- list( DGE1o=syn1o("syn11948496"), DGE1n=syn1n("syn18143734"), DGE2n=syn2n("syn17114495") ) %>%
+    map( read_csv, col_types=cols() )
+
+## Reduce to a common gene set
+gcom <- map( XX, pull, HUGO )%>% reduce( intersect )
+XX <- XX %>% map( filter, HUGO %in% gcom ) %>% map( arrange, HUGO )
+
+## Tally up the counts
+CC <- XX %>% map( summarize_at, vars(-HUGO), sum ) %>% map( gather, Well, `Total Counts` ) %>%
+    bind_rows( .id = "Plate" )
+
+## Generate summary boxplots
+CC1 <- CC %>% mutate_at( "Plate", factor, levels=c("DGE1o", "DGE1n", "DGE2n") )
+ggplot( CC1, aes(x=Plate, y=`Total Counts`) ) + theme_bw() + geom_boxplot() +
+    scale_y_continuous( trans="log10", breaks=c(1e2,1e3,1e4,1e5,1e6),
+                       labels=c("100","1k","10k", "100k", "1m") ) + coord_flip() +
+    geom_text( data = filter(CC, `Total Counts` < 100), aes(label="P11_old"), vjust=1.5 ) +
+    theme( axis.title = element_text(size=12, face="bold"),
+          axis.text = element_text(size=12, face="bold") )
+```
+
+### Downsampling to drugs that are in common among all plates
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.height=3, fig.width=8}
+## Load the matching metadata
+Y1 <- syn1o("syn11948497") %>% read_csv( col_types=cols() ) %>% mutate_at( "Concentration", str_sub, 1, -3 )
+Y2 <- syn2n("syn17114496") %>% read_csv( col_types=cols() )
+YY <- list( DGE1o=Y1, DGE1n=Y1, DGE2n=Y2 ) %>% map( mutate_at, "Drug", str_to_lower ) %>%
+    map( mutate_at, "Concentration", as.double )
+
+## Identify wells that contain common data
+dcom <- map( YY, pull, Drug ) %>% reduce( intersect )
+WW <- map( YY, filter, Drug %in% dcom, Concentration %in% c(1,10) ) %>% bind_rows( .id="Plate" ) %>%
+    inner_join( CC, by=c("Plate","Well") )
+
+## Plot the tallies
+WW1 <- WW %>% mutate_at( "Plate", factor, levels=c("DGE1o", "DGE1n", "DGE2n") )
+ggplot( WW1, aes(x=Plate, y=`Total Counts`, color=Drug) ) + theme_bw() + 
+    geom_point(aes(size=Concentration), alpha=0.5) +
+    scale_y_continuous( trans="log10", breaks=c(3e3, 1e4, 3e4, 1e5, 3e5),
+                       labels=c("3k", "10k", "30k", "100k", "300k")) +
+    scale_size( range=c(2,5), breaks=c(1,5), labels=c("1uM","10uM") ) +
+    ggthemes::scale_color_few() + coord_flip() +
+    theme( axis.title = element_text( size=12, face="bold" ),
+          axis.text = element_text( size=12, face="bold" ) )
+```
+
+## Clustering transcriptional profiles of drugs common to all plates
+
+```{r echo=FALSE, fig.align='center', fig.height=6.5, fig.width=8}
+## Identify drugs to be plotted in the heatmap
+ZZ <- map( YY, filter, Drug %in% dcom, Concentration == 10 )
+
+## Compose the heatmap values and metadata
+HH <- map( ZZ, pull, Well ) %>% map2( XX, ., select ) %>%
+    imap( ~rename_all(.x, str_c, "_", .y) ) %>% bind_cols() %>%
+    as.matrix %>% cor
+Hmeta <- ZZ %>% bind_rows( .id="Plate" ) %>% select( -Concentration ) %>%
+    mutate( Well = str_c(Well, "_", Plate) ) %>% as.data.frame %>%
+    column_to_rownames( "Well" )
+Hcol <- list( Plate = c(DGE1o = "gray20", DGE1n = "gray50", DGE2n = "gray80"),
+             Drug = set_names( ggthemes::few_pal()(4), unique(Hmeta$Drug) ) )
+
+## Plot the heatmap
+pheatmap::pheatmap( HH, annotation_row = Hmeta, annotation_colors = Hcol )
+```
+
+## GSEA of Jak inhibitors for Interferome-Stimulated Genes
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+## edgeR analysis applied to drug-vs-control dichotomy
+dvc_edgeR <- function( X, drugWells, ctrlWells, drugName )
+{
+#    cat( "Comparing", drugName, "against controls\n" )
+    Y1 <- bind_rows( tibble(Drug = drugName, Well = drugWells),
+                    tibble(Drug = "Control", Well = ctrlWells) ) %>%
+        mutate_at( "Drug", factor, levels=c("Control", drugName) ) %>%
+        as.data.frame %>% column_to_rownames("Well")
+    X1 <- X %>% select( HUGO, rownames(Y1) ) %>% as.data.frame %>% column_to_rownames("HUGO")
+
+    ## Create the design matrix and estimate dispersion
+    dl <- edgeR::DGEList( counts = X1, samples = Y1 )
+    dl <- edgeR::calcNormFactors( dl )
+    mmx <- model.matrix( ~Drug, data = dl$samples )
+    dl <- edgeR::estimateDisp( dl, mmx )
+
+    ## Compute differential expression
+    gf <- edgeR::glmFit( dl, mmx ) %>% edgeR::glmLRT( coef = 2 )
+    RR <- edgeR::topTags( gf, nrow(X1) ) %>% as.data.frame %>% rownames_to_column( "Gene" )
+    RR
+}
+
+## Identify control, ruxolitinib and tofacitinib wells
+wCtrl <- c( rep("drug control",2), "dmso" ) %>% map2( YY, ., ~filter(.x, Drug == .y) ) %>%
+    map( pull, Well )
+wRuxo <- map( YY, filter, Drug == "ruxolitinib", Concentration == 10 ) %>% map( pull, Well )
+wTofa <- map( YY, filter, Drug == "tofacitinib", Concentration == 10 ) %>% map( pull, Well )
+
+## Run edgeR
+RR <- list( ruxolitinib = list(XX, wRuxo, wCtrl), tofacitinib = list(XX, wTofa, wCtrl) ) %>%
+    imap( ~pmap(.x, dvc_edgeR, .y) ) %>% map( bind_rows, .id = "Plate" ) %>%
+    bind_rows( .id="Drug" ) %>% as_tibble()
+
+## Load ISG list
+isg <- syn1o( "syn11629935" ) %>% scan( what=character() ) %>% list() %>%
+    set_names( "Interferome-Stimulated Genes" )
+
+## Run GSEA
+GSEA <- RR %>% nest( -Drug, -Plate, .key="DFX" ) %>%
+    mutate( GL = map(DFX, with, set_names(logFC, Gene)) ) %>%
+    mutate( ISG = map(GL, ~fgsea::fgsea(isg, .x, 1e4)) ) %>% select( -DFX, -GL ) %>%
+    unnest() %>% select( Drug, Plate, pval )
+knitr::kable( GSEA, format="html" ) %>%
+    kableExtra::kable_styling( bootstrap_options = "striped", full_width = FALSE )
+```
