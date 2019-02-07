@@ -4,34 +4,45 @@
 
 source( "results.R" )
 
-## Geometric average
-gavg <- function(v) {exp(mean(log(v)))}
-
-## Geometric average of non-zero values in the vector v
-gavg_nz <- function( v ) {keep( v, ~.!=0 ) %>% gavg}
-
-## Retrieves a slice of DGE results relevant to the requested task
-## Removes MAYO results, due to the observed batch effect
-DGEslice <- function( task="AC" )
+## Plots the top FDA-approved candidates ranked by composite score
+main <- function()
 {
-    indexDGE() %>% filter( Task == task, Dataset != "MAYO" ) %>%
-        resFromIndex() %>% mutate_at("Region", recode, DLPFC="" ) %>%
-        mutate_at( "Region", str_sub, 3, 5 ) %>%
-        mutate( Dataset = str_c( Dataset, Region ) ) %>% unnest() %>%
-        select( Dataset, Plate, Drug, Target, p_value )    
-}
+    ## Helper function that prepares a data frame for heatmap plotting
+    fprep <- function( .df ) {
+        .df %>% replace_na( list(Target="") ) %>%
+            mutate( Drug = str_c(Drug, " (", Target, ")",
+                                 " [", str_sub(Plate, 4, 4), "]") ) %>%
+            select( Drug, MSBB10:Composite ) %>% as.data.frame() %>% column_to_rownames( "Drug" ) %>%
+            head( 20 ) %>% as.matrix()
+    }
 
-## The composite score is defined by three values (in the order of importance)
-## 1. Geometric average of p-values
-## 2. The total number of p-values < 0.01 across all datasets / regions
-## 3. [Log] Geometric average of all p-values that are >= 0.01
-DGEcomposite <- function( task="AC" )
-{
-    ## Compute a composite score
-    DGEslice(task) %>% nest( Dataset, p_value, .key="Perf" ) %>%
-        mutate( Individual = map(Perf, spread, Dataset, p_value),
-               Composite = map(Perf, summarize_at, "p_value",
-                               funs(CS1 = gavg, CS2 = sum(.==0), CS3 = gavg_nz)) ) %>%
-        select(-Perf) %>% unnest() %>% arrange( CS1, desc(CS2), CS3 )
-}
+    ## Produces a set of values to print over the heatmap
+    nprep <- function( .p ) {
+        .n  <- round( .p, 2 )
+        storage.mode(.n) <- "character"
+        .n[,1:5] <- ""
+        .n
+    }
+    
+    ## Define the palette
+    flog10 <- function(n) {log10( 10 / seq( 10, 1, length.out=n ))}
+    pal <- RColorBrewer::brewer.pal( 9, "YlOrBr" ) %>% rev %>% colorRampPalette
+    
+    ## Fetch the composite score matrix
+    X <- DGEcomposite() %>% select(-MSBB)
 
+    ## Separate drugs into FDA-approved and non-approved
+    DB <- syn("syn16932412") %>% read_csv() %>% transmute( Drug = str_to_lower(Name) )
+    P1 <- X %>% filter( Drug %in% DB$Drug ) %>% fprep()
+    P2 <- X %>% filter( !(Drug %in% DB$Drug) ) %>% fprep()
+
+    pheatmap::pheatmap( P1, cluster_rows=FALSE, cluster_cols=FALSE, color=pal(100),
+                       fontsize=12, fontface="bold", gaps_col=5, display_numbers=nprep(P1),
+                       number_color="black",
+                       file="composite1.png", width=5, height=7.5 )
+
+    pheatmap::pheatmap( P2, cluster_rows=FALSE, cluster_cols=FALSE, color=pal(100),
+                       fontsize=12, fontface="bold", gaps_col=5, display_numbers=nprep(P2),
+                       number_color="black",
+                       file="composite2.png", width=5, height=7.5 )
+}

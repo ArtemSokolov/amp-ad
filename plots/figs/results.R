@@ -10,12 +10,14 @@ synapser::synLogin()
 syn <- synExtra::synDownloader( "~/data/AMP-AD/figs" )
 syn_csv <- function( synid ) { syn(synid) %>% read_csv(col_types = cols()) }
 
+## This index of results contains DGE-derived gene sets that were size-matched against
+##   mined sets. The function is getting deprecated.
 ## Pre-defined index of DGE results, constructed using the following code:
 ##   source( "../../R/resmine.R" )
 ##   synResults() %>% filter( Type == "stats", Region != "CBE" ) %>% unnest() %>%
 ##     filter( grepl("DGE", fileName) ) %>% mutate( Plate = str_sub(fileName, 1, 4) ) %>%
 ##     select( id = fileId, -fileName ) %>% dput()
-indexDGE <- function()
+indexDGE_deprecated <- function()
 {
     structure(list(Dataset = c("MAYO", "MAYO", "MAYO", "MAYO", "MAYO", 
                                "MAYO", "ROSMAP", "ROSMAP", "ROSMAP", "ROSMAP", "ROSMAP", "ROSMAP", 
@@ -44,6 +46,43 @@ indexDGE <- function()
                              "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", 
                              "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", 
                              "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2")),
+              class = c("tbl_df", "tbl", "data.frame"), row.names = c(NA, -36L))
+}
+
+## Pre-defined index of DGE results, constructed using the following code:
+##   source( "../../R/resmine.R" )
+##   synResults() %>% filter( Type == "stats", Region != "CBE" ) %>% unnest() %>%
+##     filter( grepl("dfx", fileName) ) %>% mutate( Plate = str_sub(fileName, 1, 4) ) %>%
+##     select( -Type, -fileName ) %>% rename( id = fileId ) %>% dput()
+indexDGE <- function()
+{
+    structure(list(Dataset = c("MAYO", "MAYO", "MAYO", "MAYO", "MAYO", 
+                               "MAYO", "ROSMAP", "ROSMAP", "ROSMAP", "ROSMAP", "ROSMAP", "ROSMAP", 
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", 
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", 
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB" ),
+                   Region = c("TCX", "TCX", "TCX", "TCX", "TCX", "TCX", "DLPFC", 
+                              "DLPFC", "DLPFC", "DLPFC", "DLPFC", "DLPFC", "BM10", "BM10", 
+                              "BM10", "BM10", "BM10", "BM10", "BM22", "BM22", "BM22", "BM22", 
+                              "BM22", "BM22", "BM36", "BM36", "BM36", "BM36", "BM36", "BM36", 
+                              "BM44", "BM44", "BM44", "BM44", "BM44", "BM44"),
+                   Task = c("AB", "AB", "AC", "AC", "BC", "BC", "AB", "AB", "AC", "AC", "BC", "BC", 
+                            "AB", "AB", "AC", "AC", "BC", "BC", "AB", "AB", "AC", "AC", "BC", 
+                            "BC", "AB", "AB", "AC", "AC", "BC", "BC", "AB", "AB", "AC", "AC", 
+                            "BC", "BC"),
+                   id = c("syn18143075", "syn18143076", "syn18143081", 
+                          "syn18143082", "syn18143045", "syn18143046", "syn18143051", "syn18143052", 
+                          "syn18143124", "syn18143125", "syn18143093", "syn18143094", "syn18143111", 
+                          "syn18143112", "syn18143118", "syn18143119", "syn18143027", "syn18143028", 
+                          "syn18143057", "syn18143058", "syn18143021", "syn18143022", "syn18143069", 
+                          "syn18143070", "syn18143142", "syn18143143", "syn18143136", "syn18143137", 
+                          "syn18143039", "syn18143040", "syn18143033", "syn18143034", "syn18143087", 
+                          "syn18143088", "syn18143063", "syn18143064"),
+                   Plate = c("DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", 
+                             "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", 
+                             "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", 
+                             "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", "DGE2", "DGE1", 
+                             "DGE2", "DGE1", "DGE2")),
               class = c("tbl_df", "tbl", "data.frame"), row.names = c(NA, -36L))
 }
 
@@ -125,3 +164,32 @@ resFromIndex <- function( IDX )
     IDX %>% mutate( Results = map(id, syn_csv) ) %>% select( -id ) %>%
         mutate_at( "Results", map, annotateResults )
 }
+
+## Given a vector of matching Dataset and Region names, converts them into a single tag
+tagDataset <- function( vDataset, vRegion )
+{
+    recode( vRegion, DLPFC="", TCX="", CBE="" ) %>%
+        str_sub( 3, 5 ) %>% str_c( vDataset, . )
+}
+
+## Retrieves a slice of DGE results relevant to the requested task
+## Removes MAYO results, due to the observed batch effect
+DGEslice <- function( task="AC" )
+{
+    indexDGE() %>% filter( Task == task, Dataset != "MAYO" ) %>%
+        resFromIndex() %>% mutate( Dataset = tagDataset(Dataset, Region) )%>%
+        unnest() %>% select( Dataset, Plate, Drug, Target, p_value )    
+}
+
+## The composite score is defined by the geometric average of p-values
+##   each of the MSBB regions is given a 0.25 weight to avoid MSBB dominating the score
+##   p-values below 0.01 are thresholded at 0.005 to avoid "zero" issues
+DGEcomposite <- function( task="AC" )
+{
+    DGEslice(task) %>% mutate_at( "p_value", pmax, 0.005 ) %>%
+        spread( Dataset, p_value ) %>%
+        mutate_at( vars(MSBB10:ROSMAP), ~-log10(.x) ) %>%
+        mutate( MSBB = (MSBB10 + MSBB22 + MSBB36 + MSBB44)/4 ) %>%
+        mutate( Composite = (MSBB+ROSMAP)/2 ) %>% arrange( desc(Composite) )
+}
+
