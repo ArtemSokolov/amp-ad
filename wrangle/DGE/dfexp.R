@@ -13,8 +13,8 @@ dvc_edgeR <- function( X, drugWells, ctrlWells, drugName )
 {
     cat( "Comparing", drugName, "against controls\n" )
 
-    Y1 <- bind_rows( data_frame(Drug = drugName, Well = drugWells),
-                    data_frame(Drug = "Control", Well = ctrlWells) ) %>%
+    Y1 <- bind_rows( tibble(Drug = drugName, Well = drugWells),
+                    tibble(Drug = "Control", Well = ctrlWells) ) %>%
         mutate_at( "Drug", factor, levels=c("Control", drugName) ) %>%
         as.data.frame %>% column_to_rownames("Well")
     X1 <- X %>% select( HUGO, rownames(Y1) ) %>% as.data.frame %>% column_to_rownames("HUGO")
@@ -55,18 +55,18 @@ drug2Wells <- function( Y, drugName, k=2 )
         filter( Concentration == max(Concentration) ) %>% pull(Well)
 }
 
-## Differential expression on DGE1 experiment
+## Differential expression on the re-sequenced DGE1 experiment
 DGE1 <- function()
 {
     ## Load the data
     ## Identify drugs that are toxic by looking at the total number of counts in each well
     ## Remove them from consideration
-    X <- syn( "syn15673461" ) %>% read_csv( col_types=cols() )
-    Y <- syn( "syn15673460" ) %>% read_csv( col_types=cols() ) %>% filterWells( X )
-
+    X <- syn( "syn18145755" ) %>% read_csv( col_types=cols() )
+    Y <- syn( "syn15673460" ) %>% read_csv( col_types=cols() ) %>% filterWells( X, 3e4 )
+    
     ## Identify control wells
     wCtrl <- Y %>% filter( Drug == "Drug control" ) %>% pull(Well)
-    
+
     ## Compose the set of drugs to consider and map them to the corresponding wells
     ## Exclude Chitosan as it is highly toxic
     wDrugs <- Y %>% filter( !is.na(Concentration) ) %>% pull(Drug) %>% unique %>%

@@ -22,6 +22,7 @@ read_gmt <- function( fn, iName=1 )
 }
 
 ## Retrieves the set of all gene names in protein-coding versions of ROSMAP, Mayo and MSBB
+## Result is uploaded to Synapse as syn16204450
 genesets_AMPAD <- function()
 {
     ## Load the three datasets and extract gene names from each
@@ -37,38 +38,6 @@ genesets_AMPAD <- function()
 
     ## Compose the final strings and write them to file
     cat( RR$Final, sep="\n", file="AMP-AD.gmt" )
-}
-
-## Returns the number of genes that Nienke's sets have in common with each AMP-AD dataset
-NKsizes <- function()
-{
-    ## Load gene space of each dataset
-    AA <- syn( "syn16204450" ) %>% read_gmt()
-    
-    ## Load Nienke's mined gene sets and the corresponding metadata
-    ##  Count the number of mined associations present
-    MGS <- syn( "syn11973633" ) %>% read_gmt() %>% enframe( "URL", "MinedSet" )
-    syn( "syn11801537" ) %>% readq_csv() %>% rename( URL = link ) %>%
-        mutate( Drug = str_to_lower(name) ) %>% inner_join( MGS, by="URL" ) %>%
-        mutate( ROSMAP = map_int( MinedSet, ~length(intersect(., AA$ROSMAP)) ),
-               Mayo = map_int( MinedSet, ~length(intersect(., AA$Mayo)) ),
-               MSBB = map_int( MinedSet, ~length(intersect(., AA$MSBB)) ) ) %>%
-        select( LINCSID = lincs_id, URL, Drug, ROSMAP:MSBB )
-}
-
-## Given a differential expression matrix, composes gene sets for each drug that are
-##  size-matched against `Nienke_10genes.gmt` in the context of specific datasets
-genesets_smatch <- function( DX )
-{
-    ## Retrieve the number of genes Nienke's sets have in common with each dataset
-    NK <- NKsizes()
-    vDS <- c("ROSMAP","Mayo","MSBB")	## Dataset-specific column names
-
-    ## Sort drug-specific differential expression by p-value and isolate the top k genes
-    DX %>% mutate_at( "Drug", str_to_lower ) %>% nest( -Drug, .key="DFX" ) %>%
-        mutate_at( "DFX", map, arrange, sym("PValue") ) %>%
-        inner_join( NK, by="Drug" ) %>% mutate_at( vDS, map2, .$DFX, ~slice(.y, 1:.x) ) %>%
-        mutate_at( vDS, map, pull, "Gene" ) %>% select(-DFX)
 }
 
 ## Given a differential expression matrix, composes gene sets for each drug that
@@ -106,7 +75,7 @@ genesets_dfexp <- function( DX )
     inner_join( M, GS )
 }
 
-## Takes the output of genesets_smatch() and concatenates it into tab-delimited
+## Takes the output of genesets_dfexp() and concatenates it into tab-delimited
 ##   strings in preparation for writing to .gmt files
 prep4gmt <- function( GS )
 {
@@ -116,17 +85,13 @@ prep4gmt <- function( GS )
         rename( MAYO = Mayo )
 }
 
-## Processes DGE1 experiment
+## Processes resequenced DGE1 experiment
 DGE1 <- function()
 {
     vDS <- c("ROSMAP", "MAYO", "MSBB")
-    
+
     ## Load the raw differential expression matrix
-    DX <- syn( "syn15674107" ) %>% readq_csv()
-    
-    ## Compute size-matched gene sets and concatenate into tab-delimited strings
-    GSsm <- DX %>% genesets_smatch() %>% prep4gmt()
-    map( vDS, ~cat(GSsm[[.x]], sep="\n", file=str_c("DGE1-", .x, "-sm.gmt")) )
+    DX <- syn( "syn18145776" ) %>% readq_csv()
 
     ## Compute dfx-based gene sets and concatenate into tab-delimited strings
     GSdfx <- DX %>% genesets_dfexp() %>% prep4gmt()
@@ -141,10 +106,6 @@ DGE2 <- function()
     ## Load the raw differential expression matrix
     DX <- syn( "syn17167348" ) %>% readq_csv()
     
-    ## Compute size-matched gene sets and concatenate into tab-delimited strings
-    GSsm <- DX %>% genesets_smatch() %>% prep4gmt()
-    map( vDS, ~cat(GSsm[[.x]], sep="\n", file=str_c("DGE2-", .x, "-sm.gmt")) )
-
     ## Compute dfx-based gene sets and concatenate into tab-delimited strings
     GSdfx <- DX %>% genesets_dfexp() %>% prep4gmt()
     map( vDS, ~cat(GSdfx[[.x]], sep="\n", file=str_c("DGE2-", .x, "-dfx.gmt")) )

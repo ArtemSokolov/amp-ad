@@ -80,7 +80,7 @@ ZZ <- map( YY, filter, Drug %in% dcom, Concentration == 10 )
 ## Compose the heatmap values and metadata
 HH <- map( ZZ, pull, Well ) %>% map2( XX, ., select ) %>%
     imap( ~rename_all(.x, str_c, "_", .y) ) %>% bind_cols() %>%
-    as.matrix %>% cor
+    as.matrix %>% cor( method="sp" )
 Hmeta <- ZZ %>% bind_rows( .id="Plate" ) %>% select( -Concentration ) %>%
     mutate( Well = str_c(Well, "_", Plate) ) %>% as.data.frame %>%
     column_to_rownames( "Well" )
