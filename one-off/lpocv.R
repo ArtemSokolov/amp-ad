@@ -55,16 +55,28 @@ lpocv <- function( XY, lPairs )
         with( AUC_LPOCV( pos, neg ) )
 }
 
-## Downloads ROSMAP pair assignments used by BTR, associated with a given task
-## Returns a list of pairs that can be supplied directly to lpocv()
-loadPairs <- function( task )
+## Downloads pair assignments used by BTR, associated with a given dataset/region
+loadPairs <- function( ds, rg )
 {
-    syn( "syn15665557" ) %>% read_csv( col_types = g_ct ) %>%
-        filter( Task == task ) %>% with( split( ID, pair_index ) )
+    dsmap <- c( "msbb" = "syn15665595", "rosmap" = "syn15665557" )
+    str_to_lower( ds ) %>% pluck( dsmap, . ) %>% syn() %>%
+        read_csv( col_types = g_ct ) %>% filter( Region == rg )
+}
+
+## Reduces the data frame from loadPairs() to a specific task
+## Returns a list of pairs that can be supplied directly to lpocv()
+taskPairs <- function( P, task )
+{
+    P %>% filter( Task == task ) %>% with( split(ID, pair_index) )
 }
 
 ## Loads the ROSMAP dataset
 loadROSMAP <- function() { syn("syn14306482") %>% read_tsv(col_types = g_ct) }
+
+## Loads the MSBB dataset (specific region)
+loadMSBB <- function( rg )
+{ syn("syn15094062") %>% read_tsv(col_types=g_ct) %>%
+      filter( BrodmannArea == rg ) }
 
 ## Reduces a dataset to the binary task of interest
 ## X - Dataset, as loaded by loadROSMAP()
@@ -122,13 +134,14 @@ genBK <- function( gsi, X, nBK, vExclude=c("ID", "PMI", "AOD", "CDR", "Braak",
 ## Evaluates gene sets of interest in the context of a given dataset / task
 ## gsi - gene sets of interest (as a named list)
 ## X - Dataset, as loaded by loadROSMAP()
+## P - Matching pairs, as loaded by loadPairs()
 ## task - one or more of {"AB", "AC", "BC"}
-evalGeneSets <- function( gsi, X, task=c("AB","BC","AC") )
+evalGeneSets <- function( gsi, X, P, task=c("AB","BC","AC") )
 {
     ## Iterate over tasks if more than one is requested
     if( length( task ) > 1 )
     {
-        RR <- map( task, ~evalGeneSets(gsi, X, .x) )
+        RR <- map( task, ~evalGeneSets(gsi, X, P, .x) )
         return( bind_rows(RR) )
     }
     
@@ -136,7 +149,7 @@ evalGeneSets <- function( gsi, X, task=c("AB","BC","AC") )
     ##   identify the corresponding pair assignments
     cat( "Setting up to evaluate task", task, "...\n" )
     XY <- reduceToTask( X, task )
-    lP <- loadPairs( task )
+    lP <- taskPairs( P, task )
 
     ## Downsample the data according to the requested gene sets
     cat( "Generating data slices...\n" )
@@ -156,11 +169,12 @@ evalGeneSets <- function( gsi, X, task=c("AB","BC","AC") )
 ## gsi - gene set of interest
 ## nBK - number of background sets to generate
 ## X - Dataset, as loaded by loadROSMAP()
+## P - Matching pairs, as loaded by loadPairs()
 ## task - one or more of {"AB", "AC", "BC"}
-evalGeneSetBK <- function( gsi, nBK, X, task=c("AB","BC","AC") )
+evalGeneSetBK <- function( gsi, nBK, X, P, task=c("AB","BC","AC") )
 {
     genBK( gsi, X, nBK ) %>% c( "GSI" = list(gsi), . ) %>%
-        evalGeneSets( X, task )
+        evalGeneSets( X, P, task )
 }
 
 ## Plots the results of evalGeneSetBK()
@@ -201,21 +215,25 @@ plotGeneSetEval <- function( Rl )
 ## Testing the functionality in this file
 mytest <- function()
 {
-    X <- loadROSMAP()
+    ## X <- loadROSMAP()
+    ## P <- loadPairs("ROSMAP", "DLPFC")
+
+    X <- loadMSBB("BM10")
+    P <- loadPairs("MSBB", "BM10")
 
     ## PIK3CA inhibitor gsk1059615
     rGSK <- c("CSNK1G2", "PIK3CD", "NEK10", "DYRK1A", "PIK3CB", "PIK3CG", "JAK3", "BMP2K",
               "STK10", "MAP3K19", "MTOR", "GAK", "CLK1", "CLK3", "PIK3CA", "MAPK15") %>%
-        evalGeneSetBK( 10, X )
+        evalGeneSetBK( 10, X, P )
     
     ## Apoptosis gene set provided by Kris Sarosiek
     rApoptosis <- c("BAX", "BAK1", "BCL2", "BCL2L1", "BCL2L11", "MCL1") %>%
-        evalGeneSetBK( 10, X )
+        evalGeneSetBK( 10, X, P )
 
     ## SPARCS gene set provided by Russell Jenkins
     rSPARCS <- c("TRIM22", "TRIM38", "IL32", "SPATS2L", "EPHA3", "HERC3", "ADAM19", "SERPINB9",
                  "IFI44L", "F3", "BEND6", "AIG1", "MSRB2", "TNFRSF9", "ANTXR1" ) %>%
-        evalGeneSetBK( 10, X )
+        evalGeneSetBK( 10, X, P )
 
     Y <- list( "GSK1059615" = rGSK, "Apoptosis" = rApoptosis, "SPARCS" = rSPARCS )
     plotGeneSetEval( Y ) ##+ ggsave( "mytest.pdf" )
