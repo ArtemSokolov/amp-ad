@@ -4,14 +4,13 @@
 
 library( tidyverse )
 
-## Produces bold element_text of desired size
-etxt <- function(s, ...) element_text(size=s, face="bold", ...)
+source( "../plot.R" )
 
 ## Figure shows the intuition of comparing gene set of interest against background performance
 panelC <- function()
 {
-    GSBK_lbl <- data_frame( AUC = c(0.69, 0.55, 0.67), y = c(0.3, 2, 5),
-                           lbl=c("p-value", "Random", "Gene Set\nOf Interest") )
+    GSBK_lbl <- tibble( AUC = c(0.69, 0.55, 0.67), y = c(0.3, 2, 5),
+                       lbl=c("p-value", "Random", "Gene Set\nOf Interest") )
     X <- read_csv( "panelC.csv", col_types=cols() )
     ggplot( X, aes(x=AUC) ) + theme_bw() + xlim( c(0.4,0.75) ) + 
         geom_density( fill="steelblue", alpha=0.3, lwd=1.5 ) + xlab("Performance") +
@@ -23,5 +22,6 @@ panelC <- function()
               axis.text = element_blank(), axis.ticks = element_blank(),
               panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
               panel.border = element_rect(colour="black", fill=NA, size=2) ) +
-        ggsave( "panelC.png", width=5, height=2.5 )
+        ggsave( str_c("Fig1C-",Sys.Date(),".png"), width=5, height=2.5 ) +
+        ggsave( str_c("Fig1C-",Sys.Date(),".pdf"), width=5, height=2.5 )
 }

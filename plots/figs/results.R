@@ -144,6 +144,15 @@ tagDataset <- function( vDataset, vRegion )
         str_sub( 3, 5 ) %>% str_c( vDataset, . )
 }
 
+## Gives more explicit names to classification tasks
+tagTask <- function( vTask )
+    c( AB="A-vs-B", AC="A-vs-C", BC="B-vs-C" )[vTask]
+
+## Retags a dataset according to tagDataset() and tagTask()
+retag <- function( .df )
+{.df %>% mutate( Dataset = tagDataset(Dataset, Region) ) %>%
+     mutate_at( "Task", tagTask ) %>% select( -Region )}
+
 ## Retrieves a slice of DGE results relevant to the requested task
 ## Removes MAYO results, due to the observed batch effect
 DGEslice <- function( task="AC" )
