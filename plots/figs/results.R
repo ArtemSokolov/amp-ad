@@ -43,6 +43,39 @@ synResults <- function()
         select( -synRun, -synType )
 }
 
+
+## Pre-defined index of background performances, built by the following code:
+##   synResults( "score", Region != "cerebellum" ) %>% filter( grepl( "background", name ) ) %>%
+##     select( -name, -parentName ) %>% dput()
+## Dataset and Region names are then adjusted by hand:
+## 1. Removal of pc suffix from dataset names
+## 2. Recoding TempCortex as TCX
+indexBackground <- function()
+{
+    structure(list(Dataset = c("ROSMAP", "ROSMAP", "ROSMAP", "MAYO", "MAYO", "MAYO",
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB",
+                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB"),
+                   Region = c("DLPFC", "DLPFC", "DLPFC", "TCX", "TCX",
+                              "TCX", "BM10", "BM36", "BM44", "BM22", "BM36", 
+                              "BM10", "BM22", "BM10", "BM44", "BM36", "BM44", "BM22"),
+                   Task = c("AB", "AC", "BC", "BC", "AB", "AC", "AC", "AB", "BC",
+                            "BC", "AC", "AB", "AB", "BC", "AC", "BC", "AB", "AC"),
+                   id = c("syn15589822", "syn15589816", "syn15589810", "syn15572112",
+                          "syn15570670", "syn15572002", "syn15584696", "syn15585576",
+                          "syn15582756", "syn15585289", "syn15581358", "syn15582188", 
+                          "syn15586016", "syn15585432", "syn15583710", "syn15584001",
+                          "syn15583564", "syn15584563")),
+              row.names = c(NA, -18L), class = c("tbl_df", "tbl", "data.frame"))
+}
+
+## Fetches all background matrices provided by the given index
+bkFromIndex <- function( IDX = indexBackground() )
+{
+    IDX %>% mutate( BK = map(id, syn_csv), id=NULL ) %>%
+        mutate_at( "BK", map, ~gather(.x, Size, AUC) ) %>%
+        mutate_at( "BK", map, ~mutate_at( .x, "Size", as.numeric ) )
+}
+
 ## Pre-defined index of DGE results, constructed using the following code:
 ##    synResults() %>% filter( Type == "stats", Region != "CBE" ) %>%
 ##        unnest() %>% mutate( Plate = str_sub(fileName, 1, 4) ) %>%
@@ -79,39 +112,7 @@ indexDGE <- function()
               class = c("tbl_df", "tbl", "data.frame"), row.names = c(NA, -36L))
 }
 
-## Pre-defined index of background performances, built by the following code:
-##   synResults( "score", Region != "cerebellum" ) %>% filter( grepl( "background", name ) ) %>%
-##     select( -name, -parentName ) %>% dput()
-## Dataset and Region names are then adjusted by hand:
-## 1. Removal of pc suffix from dataset names
-## 2. Recoding TempCortex as TCX
-indexBackground <- function()
-{
-    structure(list(Dataset = c("ROSMAP", "ROSMAP", "ROSMAP", "MAYO", "MAYO", "MAYO",
-                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB",
-                               "MSBB", "MSBB", "MSBB", "MSBB", "MSBB", "MSBB"),
-                   Region = c("DLPFC", "DLPFC", "DLPFC", "TCX", "TCX",
-                              "TCX", "BM10", "BM36", "BM44", "BM22", "BM36", 
-                              "BM10", "BM22", "BM10", "BM44", "BM36", "BM44", "BM22"),
-                   Task = c("AB", "AC", "BC", "BC", "AB", "AC", "AC", "AB", "BC",
-                            "BC", "AC", "AB", "AB", "BC", "AC", "BC", "AB", "AC"),
-                   id = c("syn15589822", "syn15589816", "syn15589810", "syn15572112",
-                          "syn15570670", "syn15572002", "syn15584696", "syn15585576",
-                          "syn15582756", "syn15585289", "syn15581358", "syn15582188", 
-                          "syn15586016", "syn15585432", "syn15583710", "syn15584001",
-                          "syn15583564", "syn15584563")),
-              row.names = c(NA, -18L), class = c("tbl_df", "tbl", "data.frame"))
-}
-
-## Fetches all background matrices provided by the given index
-bkFromIndex <- function( IDX = indexBackground() )
-{
-    IDX %>% mutate( BK = map(id, syn_csv), id=NULL ) %>%
-        mutate_at( "BK", map, ~gather(.x, Size, AUC) ) %>%
-        mutate_at( "BK", map, ~mutate_at( .x, "Size", as.numeric ) )
-}
-
-## Annotates a results data frame with drug / target information
+## Annotates a results data frame with drug, target and toxicity information
 annotateResults <- function( R )
 {
     ## Load the associated LINCS metadata (drug names)
@@ -120,16 +121,23 @@ annotateResults <- function( R )
 
     ## Load the list of approved drugs, taken from DrugBank
     vAppr <- syn_csv("syn16932412") %>% with( str_to_lower(Name) )
+
+    ## Load toxicity information (threshold at 2,200 nuclei count for toxicity)
+    ## MG-132 is known to be toxic from previous work (add it by hand)
+    TOX <- syn_csv("syn18496657") %>% mutate( Drug = str_to_lower(`Fluid name`) ) %>%
+        group_by( Drug ) %>% summarize_at( "Nuclei counts", mean ) %>%
+        mutate( IsToxic = as.integer( `Nuclei counts` < 2200 ) ) %>%
+        bind_rows( list(Drug="mg-132", IsToxic=1) )
     
     R %>% rename( URL = id ) %>% inner_join( M, by="URL" ) %>%
         mutate( IsApproved = as.integer( Drug %in% vAppr ) ) %>%
-        select( LINCSID, IsApproved, Drug, Target, Size = intersect, AUC, p_value )
+        left_join( TOX, by="Drug" ) %>%
+        select( LINCSID, IsApproved, IsToxic, Drug, Target, Size = intersect, AUC, p_value )
 }
 
 ## Fetches all results matrices associated with a given results index
 ##   Annotates results with relevant tags
-## IDX - index data frame, as returned by indexDGE() or indexMined()
-resFromIndex <- function( IDX )
+resFromIndex <- function( IDX = indexDGE() )
 {
     ## Fetch all the relevant results values
     ## Generate a tag for each Dataset / Region / Task triplet
@@ -158,8 +166,8 @@ retag <- function( .df )
 DGEslice <- function( task="AC" )
 {
     indexDGE() %>% filter( Task == task, Dataset != "MAYO" ) %>%
-        resFromIndex() %>% mutate( Dataset = tagDataset(Dataset, Region) )%>%
-        unnest() %>% select( Dataset, Plate, LINCSID, IsApproved, Drug, Target, p_value )
+        resFromIndex() %>% retag() %>% unnest() %>%
+        select( Dataset, Plate, LINCSID, IsApproved, IsToxic, Drug, Target, p_value )
 }
 
 ## The composite score is defined by the geometric average of p-values
@@ -167,9 +175,8 @@ DGEslice <- function( task="AC" )
 ##   p-values below 0.01 are thresholded at 0.005 to avoid "zero" issues
 DGEcomposite <- function( task="AC" )
 {
-    DGEslice(task) %>% mutate_at( "p_value", pmax, 0.005 ) %>%
+    DGEslice(task) %>% mutate_at( "p_value", ~-log10(pmax(.x,0.005)) ) %>%
         spread( Dataset, p_value ) %>%
-        mutate_at( vars(MSBB10:ROSMAP), ~-log10(.x) ) %>%
         mutate( MSBB = (MSBB10 + MSBB22 + MSBB36 + MSBB44)/4 ) %>%
         mutate( Composite = (MSBB+ROSMAP)/2 ) %>% arrange( desc(Composite) )
 }

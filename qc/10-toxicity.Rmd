@@ -1,0 +1,136 @@
+---
+title: "Drug toxicity"
+author: "Artem Sokolov"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, fig.align="center")
+
+library( tidyverse )
+
+## Set up the downloader(s)
+synapser::synLogin()
+syn <- synExtra::synDownloader( "~/data/AMP-AD/QC" )
+
+## Plotting elements
+## Short-hand for bold element_text of desired size
+etxt <- function(s, ...) {element_text( size = s, face = "bold", ... )}
+
+## Custom ggplot theme that boldifies text elements
+theme_bold <- function()
+{
+    theme( axis.text = etxt(12), axis.title = etxt(14), legend.text = etxt(12),
+          legend.title = etxt(14), strip.text = etxt(12),
+          strip.background = element_blank() )
+}
+```
+
+## Nuclei counts from a Deep Dye Drop assay
+
+```{r, fig.height=10}
+## Download the nuclei count data
+TX <- syn( "syn18496657" ) %>% read_csv( col_types=cols() ) %>%
+    mutate_at( "Plate", factor, 1:4 )
+
+## Compute summary statistics
+TXm <- TX %>% group_by( `Fluid name` ) %>%
+    summarize( `Nuclei counts` = median(`Nuclei counts`), Plate = unique(Plate) ) %>%
+    arrange( `Nuclei counts` ) %>% mutate_at( "Fluid name", ~factor(.,.) ) %>%
+    mutate( Highlight = ifelse(`Nuclei counts` < 2400, "toxic", "no") ) %>%
+    mutate( Highlight = ifelse(`Fluid name` == "DMSO", "DMSO", Highlight) )
+
+g1 <- ggplot( TXm, aes(x=`Fluid name`, y=`Nuclei counts`) ) + theme_bw() +
+    geom_bar( stat="identity", aes(fill=Highlight), alpha=0.8 ) + coord_flip() +
+    scale_fill_manual( values=c("toxic"="tomato", "DMSO"="steelblue", "no"="gray"), guide=FALSE ) +
+    geom_point( aes(color=Plate), y=-100, shape=15, size=2 ) + ggthemes::scale_color_few() +
+    geom_point( data=TX ) +
+    theme( legend.position=c(.9,.15), legend.background=element_rect(color="black"),
+          axis.title.x = element_blank(), axis.text.x = element_blank() )
+
+g2 <- ggplot( TXm, aes(x=`Nuclei counts`) ) + theme_bw() +
+    geom_density() + xlim( layer_scales(g1)$y$range$range ) +
+    geom_vline( xintercept = 2400, lty="dashed" )
+
+egg::ggarrange( g1, g2, heights=c(9,1) )
+```
+
+An overview of the raw nuclei counts values, with individual replicates shown as black points and their averages as bars. The overall distrbution has a natural break around 2,400 nuclei, which we use to define a toxicity threshold. All drugs that fall below the threshold are highlighted in red, with DMSO shown in blue. Plate index is included for reference.
+
+## Plate batch effect
+
+```{r, fig.height=4}
+ggplot( TX, aes(x=Plate, y=`Nuclei counts`) ) + theme_bw() + theme_bold() +
+    geom_boxplot(outlier.shape=NA) + ggforce::geom_sina( size=0.8 )
+```
+
+The distribution of nuclei counts across each of the four plates. There is no obvious plate-based batch effect.
+
+## Correlation with transcript count from DGE
+
+```{r, fig.width=8, fig.height=5}
+## Load the counts data from both DGE experiments, and the matching metadata
+XY <- list( DGE1="syn18143734", DGE2="syn17114495",
+           DGE1Y="syn18344946", DGE2Y="syn17114496" ) %>%
+    map( syn ) %>% map( read_csv, col_types=cols() )
+
+## Compute total counts per well and map the values to the corresponding drugs
+DGE <- map( XY[c("DGE1","DGE2")], summarize_at, vars(-HUGO), sum ) %>%
+    map( gather, Well, DGEcount ) %>%
+    map2( XY[c("DGE1Y","DGE2Y")], inner_join, by="Well" ) %>%
+    bind_rows( .id = "DGE") %>%
+    mutate_at( "Drug", recode, `KW-2449` = "KW2449", AZD1480 = "AZD-1480" )
+
+## Use the top concentration for each drug
+## Merge with nuclei counts
+C1 <- DGE %>% group_by( DGE, Drug ) %>% filter( Concentration == max(Concentration) ) %>%
+    summarize_at( "DGEcount", median ) %>% ungroup() %>% mutate_at( "Drug", str_to_lower )
+C2 <- TXm %>% select( Highlight, Drug = `Fluid name`, NUCcount = `Nuclei counts` ) %>%
+    mutate_at( "Drug", str_to_lower )
+CC <- inner_join( C1, C2, by="Drug" )
+ggplot( CC, aes(x=DGEcount, y=NUCcount, color=Highlight) ) +
+    geom_point() + theme_bw() + scale_x_log10() + theme_bold() +
+    xlab( "DGE Transcript Count" ) + ylab( "Deep-Dye-Drop Nuclei Count" ) +
+    scale_color_manual( values=c("toxic"="tomato", "no"="darkgray"), guide=FALSE ) +
+    geom_vline( xintercept=2e4, lty="dashed" ) + geom_hline( yintercept=2400, lty="dashed" ) +
+    ggrepel::geom_text_repel( aes(label=Drug), color="black", size=4, fontface="bold",
+                             data=filter( CC, DGEcount < 2e4, NUCcount > 2400 ) ) +
+    ggrepel::geom_text_repel( aes(label=Drug), color="black", size=4, fontface="bold",
+                             data=filter( CC, DGEcount > 2e4, NUCcount < 2400 ) )
+
+```
+
+Nuclei counts from the Deep-Dye-Drop assay plotted against transcript counts from DGE. For the vast majority of drugs, there's a strong agreement between toxic and non-toxic groupings. The exceptions include three RTK inihibitors dovitinib, pelitinib, and sunitinib, as well as Torin2.
+
+## Well edge effects
+
+### Toxicity
+
+```{r fig.width=8, fig.height=5}
+disp <- rlang::exprs( x=`Dispensed col`, y=`Dispensed row` )
+fscale <- TX %>% select( !!!disp ) %>% map( range ) %>% map( ~partial(seq,!!!.) )
+
+ggplot( TX, aes(!!disp$x, !!disp$y, fill=`Nuclei counts`) ) +
+    geom_tile() + theme_bw() + theme_bold() +
+    scale_x_continuous( breaks = fscale$x() ) +
+    scale_y_continuous( breaks = fscale$y() ) +
+    theme( panel.grid.minor = element_blank() ) +
+    facet_wrap( ~Plate, labeller = label_both )
+```
+
+Layout of the four plates used in toxicity experiments. The outermost wells were not used. From the plot, we observe that there is no obvious edge effect for the remaining wells.
+
+```{r fig.width=9.5, fig.height=4}
+DGE1 <- DGE %>% mutate( Row=match(str_sub(Well,1,1), LETTERS), Col=as.integer(str_sub(Well,2)) ) %>%
+    rename( `Transcript\nCount` = DGEcount )
+fscale <- DGE1 %>% select(x=Col, y=Row) %>% map(range) %>% map( ~partial(seq,!!!.) )
+
+ggplot( DGE1, aes(x=Col, y=Row, fill=`Transcript\nCount`) ) +
+    geom_tile() + theme_bw() + theme_bold() + facet_wrap( ~DGE ) +
+    scale_fill_gradient( trans="log", breaks=c(5e2, 5e3, 5e4, 5e5) ) +
+    scale_x_continuous( breaks = fscale$x(by=2) ) +
+    scale_y_continuous( breaks = fscale$y() ) +
+    theme( panel.grid.minor = element_blank() )
+```
+
+Similar plot for DGE plates also reveals no obvious edge effect.
