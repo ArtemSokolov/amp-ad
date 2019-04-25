@@ -119,6 +119,14 @@ main <- function()
     eval1( fnS5, XMSBB10, PMSBB10, RBK, "TableS5-MSBB10" )
 }
 
+## Generates self-contained data for Fig2C
+fig2C <- function()
+{
+    load( "TableS3/TableS3-ROSMAP.RData" )
+    load( "BK200-ROSMAP.RData" )
+    save( RS, RBK, file="Fig2C.RData" )
+}
+
 ## Trains a single model to predict A vs C in ROSMAP data
 ## Uses Microglia gene set from Table S3
 MGsig <- function()
