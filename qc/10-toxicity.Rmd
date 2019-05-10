@@ -104,7 +104,7 @@ Nuclei counts from the Deep-Dye-Drop assay plotted against transcript counts fro
 
 ## Well edge effects
 
-### Toxicity
+### Toxicity: nuclei counts
 
 ```{r fig.width=8, fig.height=5}
 disp <- rlang::exprs( x=`Dispensed col`, y=`Dispensed row` )
@@ -120,6 +120,8 @@ ggplot( TX, aes(!!disp$x, !!disp$y, fill=`Nuclei counts`) ) +
 
 Layout of the four plates used in toxicity experiments. The outermost wells were not used. From the plot, we observe that there is no obvious edge effect for the remaining wells.
 
+### DGE: total transcript counts
+
 ```{r fig.width=9.5, fig.height=4}
 DGE1 <- DGE %>% mutate( Row=match(str_sub(Well,1,1), LETTERS), Col=as.integer(str_sub(Well,2)) ) %>%
     rename( `Transcript\nCount` = DGEcount )
@@ -134,3 +136,19 @@ ggplot( DGE1, aes(x=Col, y=Row, fill=`Transcript\nCount`) ) +
 ```
 
 Similar plot for DGE plates also reveals no obvious edge effect.
+
+### Predictive performance
+
+```{r fig.width=9.5, fig.height=4}
+Perf <- syn( "syn18502815" ) %>% read_csv(col_types=cols()) %>%
+    select( DGE = Plate, Drug, Composite )
+DGE2 <- DGE1 %>% mutate_at( "Drug", str_to_lower ) %>% left_join( Perf, by=c("DGE","Drug") )
+
+ggplot( DGE2, aes(x=Col, y=Row, fill=`Composite`) ) +
+    geom_tile() + theme_bw() + theme_bold() + facet_wrap( ~DGE ) +
+    scale_x_continuous( breaks = fscale$x(by=2) ) +
+    scale_y_continuous( breaks = fscale$y() ) +
+    theme( panel.grid.minor = element_blank() )
+```
+
+Finally, we ensure that poor-performing drugs are not localized to edge wells.
