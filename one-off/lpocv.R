@@ -11,7 +11,7 @@ synLogin()
 
 ## Loaders
 syn <- synExtra::synDownloader( "~/data/AMP-AD/one-off" )
-g_ct <- cols(ID=col_character())
+g_ct <- cols(ID=col_character(), Braak=col_integer())
 
 ## Train-test for a single pair using liblinear implementation
 liblinear <- function( XY, vTest )
