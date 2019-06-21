@@ -119,8 +119,13 @@ annotateResults <- function( R )
     M <- syn_csv( "syn11801537" ) %>% mutate_at( "name", str_to_lower ) %>%
         select( LINCSID = lincs_id, Drug = name, Target = target_name, URL=link )
 
+    ## Retrieve additional drug approval status information
+    DBA <- syn( "syn19042441" ) %>% read_csv( col_types=cols() ) %>%
+        select( Drug = `Drug Name`, Approval = `FDA Approval Stage` ) %>%
+        mutate_at( "Drug", str_to_lower )
+
     ## Load the list of approved drugs, taken from DrugBank
-    vAppr <- syn_csv("syn16932412") %>% with( str_to_lower(Name) )
+    ## vAppr <- syn_csv("syn16932412") %>% with( str_to_lower(Name) )
 
     ## Load toxicity information (threshold at 2,200 nuclei count for toxicity)
     ## MG-132 is known to be toxic from previous work (add it by hand)
@@ -129,10 +134,10 @@ annotateResults <- function( R )
         mutate( IsToxic = as.integer( `Nuclei counts` < 2200 ) ) %>%
         bind_rows( list(Drug="mg-132", IsToxic=1) )
     
-    R %>% rename( URL = id ) %>% inner_join( M, by="URL" ) %>%
-        mutate( IsApproved = as.integer( Drug %in% vAppr ) ) %>%
+    R %>% rename( URL = id ) %>% inner_join( M, by="URL" ) %>% 
+        left_join( DBA, by="Drug" ) %>% mutate_at( "Approval", replace_na, "experimental" ) %>%
         left_join( TOX, by="Drug" ) %>%
-        select( LINCSID, IsApproved, IsToxic, Drug, Target, Size = intersect, AUC, p_value )
+        select( LINCSID, Approval, IsToxic, Drug, Target, Size = intersect, AUC, p_value )
 }
 
 ## Fetches all results matrices associated with a given results index
@@ -167,7 +172,7 @@ DGEslice <- function( task="AC" )
 {
     indexDGE() %>% filter( Task == task, Dataset != "MAYO" ) %>%
         resFromIndex() %>% retag() %>% unnest() %>%
-        select( Dataset, Plate, LINCSID, IsApproved, IsToxic, Drug, Target, p_value )
+        select( Dataset, Plate, LINCSID, Approval, IsToxic, Drug, Target, p_value )
 }
 
 ## The composite score is defined by the geometric average of p-values
