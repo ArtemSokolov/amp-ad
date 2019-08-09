@@ -180,9 +180,12 @@ DGEslice <- function( task="AC" )
 ##   p-values below 0.01 are thresholded at 0.005 to avoid "zero" issues
 DGEcomposite <- function( task="AC" )
 {
-    DGEslice(task) %>% mutate_at( "p_value", ~-log10(pmax(.x,0.005)) ) %>%
+    ## Harmonic mean
+    hmean <- function(v) {length(v)/sum(1/v)}
+    
+    DGEslice(task) %>% mutate_at( "p_value", pmax, 0.005 ) %>%
         spread( Dataset, p_value ) %>%
-        mutate( MSBB = (MSBB10 + MSBB22 + MSBB36 + MSBB44)/4 ) %>%
-        mutate( Composite = (MSBB+ROSMAP)/2 ) %>% arrange( desc(Composite) )
+        mutate( HMP = pmap_dbl(list(MSBB10, MSBB22, MSBB36, MSBB44, ROSMAP), lift_vd(hmean)) ) %>%
+        arrange( HMP )
 }
 
