@@ -2,6 +2,19 @@
 ##
 ## by Artem Sokolov
 
+## Composes a grob from an imported .pdf that is hosted on synapse
+pdfGrob <- function( synid )
+{
+    ## Fetch the .pdf source and convert it to .svg format
+    fnPdf <- syn( synid )
+    fnSvg <- gsub( "pdf", "svg", fnPdf )
+    grConvert::convertPicture(fnPdf, fnSvg)
+
+    ## Import the resulting .svg and construct the grob
+    grImport2::readPicture(fnSvg) %>%
+        grImport2::pictureGrob()
+}
+
 ## Short-hand for bold element_text of desired size
 etxt <- function(s, ...) {element_text( size = s, face = "bold", ... )}
 
