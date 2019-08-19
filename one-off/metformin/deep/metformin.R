@@ -28,6 +28,29 @@ metaMetformin <- function()
         as.data.frame %>% column_to_rownames( "Sample" )
 }
 
+## Metadata annotations for Glyburide vs. DMSO
+metaGlyburide <- function()
+{
+    tibble::tribble(
+                ~Drug, ~Sample,
+                "Glyburide", "S4",
+                "Glyburide", "S5",
+                "Glyburide", "S6",
+                "DMSO", "S7",
+                "DMSO", "S10",
+                "DMSO", "S11" ) %>%
+        mutate_at( "Drug", factor, levels=c("DMSO","Glyburide") ) %>%
+        as.data.frame %>% column_to_rownames( "Sample" )
+}
+
+
+getCounts <- function(M, ...)
+{
+    M %>% filter( !duplicated(gene_name) ) %>%
+        select( gene_name, ... ) %>%
+        as.data.frame() %>% column_to_rownames("gene_name")
+}
+
 myEdgeR <- function( X, Y )
 {
     ## Create the design matrix and estimate dispersion
@@ -38,7 +61,7 @@ myEdgeR <- function( X, Y )
 
     ## Compute differential expression
     gf <- edgeR::glmFit( dl, mmx ) %>% edgeR::glmLRT( coef = 2 )
-    RR <- edgeR::topTags( gf, nrow(X1) ) %>% as.data.frame %>% rownames_to_column( "Gene" )
+    RR <- edgeR::topTags( gf, nrow(X) ) %>% as.data.frame %>% rownames_to_column( "Gene" )
     as_tibble(RR)
 }
 
@@ -48,12 +71,8 @@ main <- function()
         filter( !is.na(gene_name) )
 
     ## Metformin vs. DMSO
-    X1 <- X %>% filter( !duplicated(gene_name) ) %>%
-        select( gene_name, S1, S2, S3, S7, S10, S11 ) %>%
-        as.data.frame() %>% column_to_rownames("gene_name")
-    Y1 <- metaMetformin()
-    R1 <- myEdgeR(X1,Y1)
-    vMet <- R1 %>% filter( logCPM > 0 ) %>% head(20)
+    R1 <- myEdgeR( getCounts(X, S1, S2, S3, S7, S10, S11), metaMetformin() )
+    vMet <- R1 %>% filter( logCPM > 0 ) %>% head(20) %>% pull(Gene)
 
     ## Compare to pre-existing gene sets
     ## synapser::synLogin()
@@ -61,4 +80,13 @@ main <- function()
     ## v2 <- syn("syn11617549") %>% scan( what=character() )
     ## R1 %>% filter( Gene %in% v1 )
     ## R1 %>% filter( Gene %in% v2 )
+
+    ## Glyburide vs. DMSO
+    R2 <- myEdgeR( getCounts(X, S4, S5, S6, S7, S10, S11), metaGlyburide() )
+    vGly <- R2 %>% head(16) %>% pull(Gene)
+
+    ## Save everything into a common .gmt file
+    cat( file="diabetes.gmt", sep="\n",
+        str_flatten( c("Metformin","Metformin",vMet), "\t" ),
+        str_flatten( c("Glyburide","Glyburide",vGly), "\t" ) )
 }
