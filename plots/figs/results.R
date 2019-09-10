@@ -189,3 +189,6 @@ DGEcomposite <- function( task="AC" )
         arrange( HMP )
 }
 
+## Pulls pre-computed DGEcomposite() output from Synapse
+DGEcompositePre <- function( synID = "syn20617283" ) { syn_csv(synID) }
+

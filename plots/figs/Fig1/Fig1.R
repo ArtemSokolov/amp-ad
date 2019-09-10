@@ -39,7 +39,6 @@ panelC <- function()
         select(-Task, -intersect, -adjusted_p, Size=n_genes) %>%
         arrange( p_value, desc(AUC) ) %>% group_by(id) %>% slice(1) %>% ungroup() %>%
         mutate_at("Size", ~round(./10)*10) %>%
-        mutate_at("description", recode, "tau/TREM2-R47H/TYROBP model"="tau/TREM2-R47H/TYROBP") %>%
         mutate_at("id", str_split, "-") %>%
         mutate_at("id", map_chr, ~str_c(.x[1]," (",.x[2],")") )
 
